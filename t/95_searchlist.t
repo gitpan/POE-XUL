@@ -1,0 +1,50 @@
+#!/usr/bin/perl -w
+
+use strict;
+use warnings;
+
+use POE::Component::XUL;
+use JSON::XS;
+use Data::Dumper;
+
+use constant DEBUG=>0;
+
+use t::PreReq;
+use Test::More ( tests=> 30 );
+t::PreReq::load( 30, qw( HTTP::Request LWP::UserAgent ) );
+
+use t::Client;
+use t::Server;
+
+############################################################
+my $Q = 5;
+
+if( $ENV{HARNESS_PERL_SWITCHES} ) {
+    $Q *= 3;
+}
+
+my $browser = t::Client->new();
+
+my $pid = t::Server->spawn( $browser->{PORT} );
+END { kill 2, $pid if $pid; }
+
+
+diag( "sleep $Q" );
+sleep $Q;
+
+my $UA = LWP::UserAgent->new;
+
+$UA->timeout( 2*60 );
+
+############################################################
+my $URI = $browser->boot_uri;
+my $resp = $UA->get( $URI );
+
+my $data = $browser->decode_resp( $resp, 'boot' );
+$browser->check_boot( $data );
+$browser->handle_resp( $data, 'boot' );
+
+ok( $browser->{W}, "Got a window" );
+is( $browser->{W}->{tag}, 'window', " ... yep" );
+ok( $browser->{W}->{id}, " ... yep" );
+

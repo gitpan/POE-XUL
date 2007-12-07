@@ -1,0 +1,253 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+  <title> Unit test file</title>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+  <script src="../../lib/prototype.js" type="text/javascript"></script>
+  <script src="../../src/util.js" type="text/javascript"></script>
+  <script src="../../src/formated.js" type="text/javascript"></script>
+  <script src="../../src/formatedinput.js" type="text/javascript"></script>
+  <script src="../../src/formatedarea.js" type="text/javascript"></script>
+  <script src="../../lib/unittest.js" type="text/javascript"></script>
+  <link rel="stylesheet" href="../test.css" type="text/css" />
+</head>
+<body>
+
+<h1>FormatedInput input Unit Tests</h1>
+
+<!-- Log output -->
+<div id="testlog"> </div>
+
+<div id="formated">
+<form>
+<textarea id="hello" cols="50" rows="10"></textarea>
+</form>
+
+<!-- Tests follow -->
+<script type="text/javascript" language="javascript" charset="utf-8">
+//<![CDATA[
+
+var area1 = { C: [ { cols: 20, format: '{2x20}', full_re: '.{0,20}\n.{0,20}\n',
+                     leading: '', length: 42, rows: 2 
+                 } ] 
+            };
+
+function mk_event ( key ) {
+    return { charCode: key.charCodeAt( 0 ) };
+}
+
+new Test.Unit.Runner({
+    // --------------------------------------------------------------
+    testCP: function() { with(this) {
+
+        var fi = new FormatedArea( 'hello', area1 );
+        assert( fi );
+        assertInstanceOf( FormatedArea, fi );
+
+        var E = fi.input();
+        assertNotNull( E, "Got the input" );
+
+        // --------------------------------------------
+        E.value = '';
+        E.selectionStart = E.selectionEnd = 0;
+            
+        var e = mk_event( 'H' );
+        var def = fi.keypress( e );
+        assert( !def, "FI did it" );
+        assertEqual( 'H', E.value, "One key" );
+
+        e = mk_event( '0' );
+        def = fi.keypress( e );
+        assert( !def, "FI did it" );
+        assertEqual( 'H0', E.value, "Two key" );
+
+        e = mk_event( 'h' );
+        def = fi.keypress( e );
+        assert( !def, "FI did it" );
+        assertEqual( 'H0h', E.value, "Red key" );
+
+        e = mk_event( ' ' );
+        fi.keypress( e );
+        assertEqual( 'H0h ', E.value, "Blue key" );
+
+        e = mk_event( '0' );
+        fi.keypress( e );
+        assertEqual( 'H0h 0', E.value, "Blue key" );
+
+        e = mk_event( 'H' );
+        fi.keypress( e );
+        assertEqual( 'H0h 0H', E.value, "More key" );
+
+        e = mk_event( '0' );
+        fi.keypress( e );
+        assertEqual( 'H0h 0H0', E.value, "Last key" );
+
+
+        e = mk_event( "\n" );
+        fi.keypress( e );
+        assertEqual( 'H0h 0H0\n', E.value, "Enter key" );
+
+        e = mk_event( "b" );
+        fi.keypress( e );
+        assertEqual( 'H0h 0H0\nb', E.value, "Next line" );
+
+        e = mk_event( "o" );
+        fi.keypress( e );
+        assertEqual( 'H0h 0H0\nbo', E.value, "Next line" );
+
+        e = mk_event( "n" );
+        fi.keypress( e );
+        assertEqual( 'H0h 0H0\nbon', E.value, "Next line" );
+
+        e = mk_event( "k" );
+        fi.keypress( e );
+        assertEqual( 'H0h 0H0\nbonk', E.value, "Next line" );
+
+        e = mk_event( "\n" );
+        fi.keypress( e );
+        assertEqual( 'H0h 0H0\nbonk', E.value, "No more lines" );
+
+        e = mk_event( "\n" );
+        fi.keypress( e );
+        assertEqual( 'H0h 0H0\nbonk', E.value, "No more lines" );
+
+        // --------------------------------------------
+        E.value = "01234567890123456789";
+
+        e = mk_event( "0" );
+        fi.keypress( e );
+        assertEqual( '01234567890123456789\n0', E.value, "Line limit" );
+        
+        fi.keypress( e );
+        assertEqual( '01234567890123456789\n00', E.value, "End of the line" );
+
+        e = mk_event( "1" );
+        fi.keypress( e );
+        assertEqual( '01234567890123456789\n001', E.value, "New line" );
+
+        // --------------------------------------------
+        E.value = "012345678901234567890\n";
+
+        e = mk_event( "0" );
+        fi.keypress( e );
+        assertEqual( '012345678901234567890\n0', E.value, "New line (edge case)" );
+
+        // --------------------------------------------
+        E.value = "01234567890123456789\n0123456789012345678";
+
+        e = mk_event( "0" );
+        fi.keypress( e );
+        assertEqual( '01234567890123456789\n01234567890123456780', E.value, "Last char" );
+
+        fi.keypress( e );
+        assertEqual( '01234567890123456789\n01234567890123456780', E.value, "Already full" );
+
+
+        // --------------------------------------------
+        E.value = "012345678901234567890\n01234567890123456789";
+
+        E.selectionStart = E.selectionEnd = 5;
+        e = mk_event( "0" );
+        fi.keypress( e );
+        assertEqual( '012340567890123456789\n01234567890123456789', E.value, "Insert into full line" );
+
+        // --------------------------------------------
+        // insert
+        E.value =    "012345678901234567890";
+        E.selectionStart = E.selectionEnd = 5;
+        
+        e = mk_event( "0" );
+        fi.keypress( e );
+        assertEqual( '012340567890123456789', E.value, "Full line" );
+
+        E.selectionStart = 5;
+        E.selectionEnd = 6;
+        
+        e = mk_event( "x" );
+        def = fi.keypress( e );
+        assert( !def, "Don't bubble up" );
+        assertEqual( '01234x567890123456789', E.value, "Substitute one" );
+
+        E.selectionStart = 5;
+        E.selectionEnd = 11;
+        
+        e = mk_event( "y" );
+        def = fi.keypress( e );
+        assert( !def, "Don't bubble up" );
+        assertEqual( '01234y0123456789', E.value, "Substitute one" );
+
+        // --------------------------------------------
+        E.value = "012345678901234567890\n012345678901234567890";
+
+        E.selectionStart = E.selectionEnd = 5;
+        e = mk_event( "\n" );
+        fi.keypress( e );
+        assertEqual( '012345678901234567890\n012345678901234567890', E.value, "Insert into full line" );
+
+        E.selectionStart = 5;
+        E.selectionEnd = 10;
+
+        def = fi.keypress( e );
+        assert( !def, "Don't bubble up" );
+        assertEqual( '012345678901234567890\n012345678901234567890', E.value, "Insert into full line" );
+
+        E.selectionStart = 15;
+        E.selectionEnd = 25;
+
+        def = fi.keypress( e );
+        assert( !def, "Don't bubble up" );
+        assertEqual( '012345678901234567890\n012345678901234567890', E.value, "Insert into full line" );
+
+        e = mk_event( "0" );
+        E.selectionStart = 15;
+        E.selectionEnd = 25;
+
+        def = fi.keypress( e );
+        assert( !def, "Don't bubble up" );
+        assertEqual( '0123456789012340\n012345678901234567890', E.value, "Insert into full line" );
+
+        // --------------------------------------------
+        // insert newline
+        E.value = "012345678901234567890";
+        E.selectionStart = E.selectionEnd = 5;
+        
+        e = mk_event( "\n" );
+        fi.keypress( e );
+        assertEqual( '01234\n5678901234567890', E.value, "Insert newline" );
+
+        E.value = "012345678901234567890";
+        E.selectionStart = 5;
+        E.selectionEnd = 6;
+        
+        e = mk_event( "\n" );
+        fi.keypress( e );
+        assertEqual( '01234\n678901234567890', E.value, "Insert newline" );
+        fi.keypress( e );
+        assertEqual( '01234\n678901234567890', E.value, "But only one" );
+
+
+        // --------------------------------------------
+        // insert char
+        E.value = "012345678901234567890";
+        E.selectionStart = E.selectionEnd = 5;
+        
+        e = mk_event( "e" );
+        fi.keypress( e );
+        assertEqual( '01234e567890123456789', E.value, "Insert char" );
+        
+    }},
+
+    // --------------------------------------------------------------
+    test_last: function() {
+        Element.hide( $( "formated" ) );
+        this.assertNotVisible( $( 'formated' ) );
+    }
+
+});
+//]]></script>
+
+
+
+</body>
+</html>
