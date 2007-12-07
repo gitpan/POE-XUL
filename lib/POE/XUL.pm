@@ -1,6 +1,6 @@
 # Copyright 2007 by Philip Gwyn.  All rights reserved;
 
-our $VERSION = '0.0100';
+our $VERSION = '0.0200';
 
 __END__
 

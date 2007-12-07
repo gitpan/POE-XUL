@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 50_poe.t 604 2007-11-15 23:46:57Z fil $
+# $Id: 50_poe.t 657 2007-12-07 18:03:30Z fil $
 
 use strict;
 use warnings;
@@ -185,7 +185,13 @@ sub ClickJSON
     my $req = HTTP::Request->new( POST => $URI );
     $req->content_type( 'application/json' );
     my $args = $browser->Click_args( $button );
-    my $json = to_json( $args );
+    my $json;
+    if( $JSON::XS::VERSION > 2 ) {
+        $json = JSON::XS::encode_json( $args );
+    }
+    else {
+        $json = JSON::XS::to_json( $args );
+    }
     $req->content_length( length $json );
     $req->content( $json );
     return $UA->request( $req );

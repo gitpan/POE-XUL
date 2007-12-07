@@ -61,7 +61,6 @@ t/10_node.t
 t/11_mixedmode.t
 t/20_changemanager.t
 t/21_cm_instructions.t
-t/21_cm_instructions.td
 t/25_cm_leaks.t
 t/26_cm_cycle.t
 t/30_logging.t

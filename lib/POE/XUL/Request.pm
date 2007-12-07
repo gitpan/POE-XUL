@@ -1,5 +1,5 @@
 package POE::XUL::Request;
-# $Id: Request.pm 355 2007-04-12 02:07:25Z fil $
+# $Id: Request.pm 657 2007-12-07 18:03:30Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 
 use strict;
@@ -132,7 +132,14 @@ sub parse_post_args
 sub decode_json
 {
     my( $self, $C ) = @_;
-    my $args = eval { JSON::XS::from_json( $C ) };
+    my $args = eval { 
+            if( $JSON::XS::VERSION > 2 ) {
+                return JSON::XS::decode_json( $C ) 
+            }
+            else {
+                return JSON::XS::from_json( $C ) 
+            }
+        };
     if( $@ ) {
         xwarn "JSON error: $@";
         return RC_BAD_REQUEST;

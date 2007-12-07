@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                POE-XUL
-version:             0.0100
+version:             0.0200
 abstract:            Server-side XUL for POE
 license:             ~
 generated_by:        ExtUtils::MakeMaker version 6.36

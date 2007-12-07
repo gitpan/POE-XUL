@@ -57,7 +57,13 @@ sub decode_resp
 
     my $content = $resp->content;
     # warn "content='$content'";
-    my $data = from_json( $content );
+    my $data;
+    if( $JSON::XS::VERSION > 2 ) {
+        $data = JSON::XS::decode_json( $content );
+    }
+    else {
+        $data = JSON::XS::from_json( $content );
+    }
     is( ref( $data ), 'ARRAY', "'$phase' returned an array" ) or die Dumper $data;
     return $data;
 }
