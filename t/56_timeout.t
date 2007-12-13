@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 56_timeout.t 604 2007-11-15 23:46:57Z fil $
+# $Id: 56_timeout.t 664 2007-12-11 22:25:08Z fil $
 
 use strict;
 use warnings;
@@ -11,8 +11,8 @@ use Data::Dumper;
 use constant DEBUG=>0;
 
 use t::PreReq;
-use Test::More ( tests=> 48 );
-t::PreReq::load( 48, qw( HTTP::Request LWP::UserAgent ) );
+use Test::More qw( no_plan );
+t::PreReq::load( 1, qw( HTTP::Request LWP::UserAgent ) );
 
 use t::Client;
 use t::Server;
@@ -67,11 +67,7 @@ $URI = $browser->boot_uri;
 $resp = $UA->get( $URI );
 
 my $data = $browser->decode_resp( $resp, 'boot' );
-is( $data->[0][0], 'SID', "First response is the SID" );
-# no boot message, this is t/test-timeout.pl
-is( $data->[1][0], 'new', "Second response is the new" );
-is( $data->[1][2], 'window', " ... window" );
-
+$browser->check_boot( $data );
 $browser->handle_resp( $data, 'boot' );
 
 ok( $browser->{W}, "Got a window" );

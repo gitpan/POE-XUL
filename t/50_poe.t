@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 50_poe.t 657 2007-12-07 18:03:30Z fil $
+# $Id: 50_poe.t 664 2007-12-11 22:25:08Z fil $
 
 use strict;
 use warnings;
@@ -11,8 +11,8 @@ use Data::Dumper;
 use constant DEBUG=>0;
 
 use t::PreReq;
-use Test::More ( tests=> 138 );
-t::PreReq::load( 132, qw( HTTP::Request LWP::UserAgent ) );
+use Test::More qw( no_plan );
+t::PreReq::load( 1, qw( HTTP::Request LWP::UserAgent ) );
 
 use t::Client;
 use t::Server;
@@ -44,11 +44,7 @@ my $URI = $browser->boot_uri;
 my $resp = $UA->get( $URI );
 
 my $data = $browser->decode_resp( $resp, 'boot' );
-is( $data->[0][0], 'SID', "First response is the SID" );
-is( $data->[1][0], 'boot', "Second response is a boot" );
-ok( $data->[1][1], " ... msg" );
-is( $data->[2][0], 'new', "Third response is the new" );
-is( $data->[2][2], 'window', " ... window" );
+$browser->check_boot( $data );
 
 $browser->handle_resp( $data, 'boot' );
 
@@ -91,11 +87,7 @@ $URI = $other_browser->boot_uri;
 $resp = $UA->get( $URI );
 
 $data = $other_browser->decode_resp( $resp, 'boot' );
-is( $data->[0][0], 'SID', "First response is the SID" );
-is( $data->[1][0], 'boot', "Second response is a boot" );
-ok( $data->[1][1], " ... msg" );
-is( $data->[2][0], 'new', "Third response is the new" );
-is( $data->[2][2], 'window', " ... window" );
+$other_browser->check_boot( $data );
 
 $other_browser->handle_resp( $data, 'boot' );
 

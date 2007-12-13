@@ -1,12 +1,12 @@
 # Copyright 2007 by Philip Gwyn.  All rights reserved;
 
-our $VERSION = '0.0200';
+our $VERSION = '0.0300';
 
 __END__
 
 =head1 NAME
 
-POE::XUL - Create remote XUL application in POE
+POE::XUL - Framework for remote XUL application in POE
 
 =head1 SYNOPSIS
 
@@ -21,56 +21,43 @@ POE::XUL - Create remote XUL application in POE
 
     ##########
     package My::App;
+    use POE;
     use POE::XUL::Node;
-
-    sub spawn
-    {
-        my( $package, $event ) = @_;
-        my $self = bless { SID=>$event->SID }, $package;
-        POE::Session->create(
-            object_states => [ $self => 
-                [ qw( _start boot Click shutdown other_state ) ] ],
-        );
-    }
-
-    #####
-    sub _start {
-        my( $self, $kernel ) = @_[ OBJECT, KERNEL ];
-        $kernel->alias_set( $self->{SID} );
-    }
-
+    use base qw( POE::XUL::Application );
 
     #####
     sub boot {
-        my( $self, $kernel, $event ) = @_[ OBJECT, KERNEL, ARG0 ];
+        my( $self, $event ) = @_;
         $self->{D} = Description( "do the following" );
-        $self->{W} = Window( HBox( $self->{D}, 
-                                   Button( label => "click me", 
-                                           Click => 'Click' ) ) );
-        $event->finish;
+        Boot( "This is a test application" );
+        Window( HBox( $self->{D}, 
+                      Button( label => "click me", 
+                              Click => 'Click' ) ) );
+        $self->createHandler( 'other_state' );
     }
 
     #####
     sub Click {
-        my( $self, $kernel, $event ) = @_[ OBJECT, KERNEL, ARG0 ];
-        $event->done( 0 );
-        $kernel->yield( 'other_state', $event );
+        my( $self, $event ) = @_;
+        $event->defer;
+        $poe_kernel->yield( 'other_state', $event );
     }
 
     sub other_state {
-        my( $self, $kernel, $event ) = @_[ OBJECT, KERNEL, ARG0 ];
-        $event->wrap( sub {
-                $self->{D}->textNode( 'You did it!' );
-                $self->{W}->firstChild->appendChild( $self->{B2} );
-            } );
-        $event->finished;
+        my( $self, $event ) = @_;
+        $self->{D}->textNode( 'You did it!' );
+        $self->{W}->firstChild->appendChild( $self->{B2} );
+        $event->handled;
     }
 
     #####
     sub shutdown {
-        my( $self, $kernel, $SID ) = @_[ OBJECT, KERNEL, ARG0 ];
+        my( $self, $SID ) = @_;
         $kernel->alias_remove( $self->{SID} );
     }
+
+See also the examples in F<eg/>.
+
 
 =head1 DESCRIPTION
 
@@ -78,12 +65,15 @@ POE::XUL is a framework for creating remote XUL applications with POE.  It
 includes a web server, a Javascript client library for Firefox and a widget
 toolkit in Perl.
 
-POE::XUL uses mirror objects.  That is, each XUL node exists as a Perl
-object in the server and as a DOM object in the client.  A ChangeManager on
-the server and the javascript client library are responsible for keeping the
-objects in sync.  Note that while all node attribute changes in the server
-are mirrored in the client, only the most important attributes (C<value>,
-C<selected>, ...) are mirrored from the client to the server.
+POE::XUL is pronounced similar to I<puzzle>.
+
+At the heart of POE::XUL is the concept of mirror objects.  That is, each
+XUL element exists as a Perl object (L<POE::XUL::Node>) in the server and as
+a DOM object in the client.  A ChangeManager on the server and the
+javascript client library are responsible for keeping the objects in sync. 
+Note that while all element attribute changes in the server are mirrored in the
+client, only the most important attributes (C<value>, C<selected>, ...) are
+mirrored from the client to the server.
 
 POE::XUL currently uses a syncronous, event-based model for updates.  This
 will be changed to an asyncronous, bidirectional model (comet) soon, I hope.
@@ -97,30 +87,34 @@ based on POE::XUL in production, the documentation is probably incomplete
 and this API will probably change.
 
 POE::XUL is a fork of Ran Eilam's XUL::Node.  POE::XUL permits the async use
-of POE events during event handling.  It also removes the use of the
-excesively slow Aspect and the heavy XML wire protocol.  L<POE::XUL::Node>'s
-API is closer to that of a DOM element.  POE::XUL has rudimentary support
-for sub-windows.  XUL::Node's (IMHO) dangerous autoloading of
-XUL::Node::Applications packages has been removed.
+of POE events during event handling and multiple window.  It also removes
+the use of the excesively slow Aspect and the heavy XML wire protocol. 
+L<POE::XUL::Node>'s API is closer to that of a DOM element.  XUL::Node's
+(IMHO) dangerous autoloading of XUL::Node::Application packages has been
+removed.
 
-=head2 The application
+=head2 Application server
 
-POE::XUL applications generaly have one POE session per application
-instance.  The POE session is created when a boot request is recieved from
-the client.  The session then must handle a 'boot' event, where-in it
-creates a L<Window> node and its children nodes.  The session is kept
-active, handling the user events it has defined, until the users stops using
-it, that is a period of inactivity.  The session is then sent a 'timeout'
-event followed by a 'shutdown' event.
+L<POE::Component::XUL> is an HTTP server that maps all requests to the
+relevant application instance.  It will timeout inactive applications.
 
-Because every application stays in-memory for the entire duration of the
-application, you will probably want to set up a HTTP proxy front-end with
-process affinity.
+An application instance stays in-memory for the entire duration of the
+application.  There is no saving and loading of the application data for
+each HTTP request.  Because of this, you will probably want to set up a HTTP
+proxy front-end with process affinity.  Or be very sure that no POE state
+blocks.
 
-It might also be possible to have multiple L<POE::XUL> applications with-in
-one session.  Tests needed.
 
-=head2 XUL nodes
+=head2 POE::XUL::Application
+
+POE::XUL applications are a sub-class of L<POE::XUL::Application>, which
+takes care of most of the interaction with the server and provides many
+convienient features to the application.  
+
+It is also possible to write a POE::XUL application in pure-POE.  See
+L<POE::XUL::POE>.
+
+=head2 XUL elements
 
 If you are not familiar with XUL, you should read
 L<http://www.xulplanet.com/tutorials/xultu/intro.html>.  You should also
@@ -129,7 +123,20 @@ keep L<http://developer.mozilla.org/en/docs/XUL> handy.
 XUL nodes are created and manipulated with L<POE::XUL::Node>. Each
 application must create a C<Window> node and all its children.
 
-=head2 Layers
+=head2 The change manager
+
+The change manager is an object that keeps the XUL elements in the browser
+and in the application server in sync.  See L<POE::XUL::ChangeManager>.
+Each application instance has a single change manager, which exists
+for the duration of the instance.
+
+The change manager isn't directly available to user applications.  They
+interact with the change manager via L<POE::XUL::Node>.  
+Keeping the change manager visible to L<POE::XUL::Node> is the job
+of L<POE::XUL::Session> or L<POE::XUL::Event/wrap>.
+
+
+=head2 More details
 
 There are many layers POE::XUL.  Maybe too many.
 
@@ -146,19 +153,19 @@ ChangeManager, which are sent as the HTTP response. The JS client library
 decodes the JSON instructions, populating the XUL DOM tree with the new
 nodes.
 
-The user then interacts with the XUL DOM, which will provoke DOM events.
-These events are turned into an AJAX request by the JS client library. 
-L<POE::Component::XUL> decodes these requets and hands them to the
+The user then interacts with the XUL elements, which will provoke DOM
+events. These events are turned into an AJAX request by the JS client
+library.  L<POE::Component::XUL> decodes these requests and hands them to the
 L<POE::XUL::Controler>.  The Controler creates and populates an
-L<POE::XUL::Event>.  The Event will get the ChangeManager to handle any
+L<POE::XUL::Event>.  The Event will get the change manager to handle any
 event I<side-effects>, such as setting C<value> of the target node.  The
-Event will then call any user-defined callbacks or postbacks.  When the
-event is finished, the ChangeManager converts any changes to the
+Event will then call any user-defined event listeners.  When the
+event is finished, the change manager converts any changes to the
 POE::XUL::Nodes to JSON instructions, which are sent as the HTTP response.
 The JS client library decodes the JSON instructions, modifying the XUL DOM
 tree as necessary.
 
-Understand?  Myabe the following diagram will help:
+Understand?  Maybe the following diagram will help:
 
                                         User
                                          |
@@ -189,86 +196,46 @@ POE events.
 
 =head2 spawn
 
-    sub spawn {
-        my ( $package, $event ) = @_;
-        my $SID = $event->SID;
-        POE::Session->create( #... );
-    }
-
 Not actually an event!  This is a package method that will be called to
-create a new application instance.  It B<must> set the session's alias
-to the application's SID, available via C<$event-E<gt>SID>.  
-
-All furthur communication with the application instance happens by 
-posting POE events to the SID.
+create a new application instance.   See L<POE::XUL::Application/spawn>.
 
 =head2 boot
-
-    sub boot {
-        my( $self, $event ) = @_[ OBJECT, ARG0 ];
-        # create a POE::XUL Window and other nodes.
-    }
 
 Once the application's session has been spawned, a C<boot> event is sent.
 This event B<must> create at least C<Window> with L<POE::XUL::Node>.  It
 should also create all necessary child nodes.
 
-=head2 timeout
+See L<POE::XUL::Application/boot> and L<POE::XUL::Event/boot>.
 
-    sub timeout {
-        my( $self, $SID ) = @_[ OBJECT, ARG0 ];
-        # ....
-    }
+=head2 timeout
 
 Called after the application has been inactive (no events from the client)
 for longer then the C<timeout> value.  No action is required.
 
-=head2 shutdown
+See L<POE::XUL::Event/timeout>.
 
-    sub timeout {
-        my( $self, $kernel, $SID ) = @_[ OBJECT, KERNEL, ARG0 ];
-        $kernel->alias_remove( $SID );
-        # ....
-    }
+=head2 shutdown
 
 Posted when it is time to delete an application instance.  This is either
 when the instance has timed-out, or when the server is shutting down.
 
-The session is expected to remove all references (aliases, files, extrefs,
-...) so that the POE kernel may GC it.
+See L<POE::XUL::Application/shutdown>, 
+L<POE::XUL::POE/shutdown> and
+L<POE::XUL::Event/shutdown>.
 
-=head1 SUB-WINDOWS
+=head1 MULTIPLE WINDOWS
 
-B<SUB-WINDOW SUPPORT IS STILL EXPERIMENTAL.>  As such, it could very well
-change in a future version.
+POE::XUL applications may have multiple windows open at once.  These
+are main window (created by L</boot>) and multple sub-windows.
 
-Sub-window support is complicated because C<POE::XUL> is synchronous,
-event-based.  This means that changes to a node must be done during an
-event that is dispatched from the relevant window.
+A sub-window is created with the L<POE::XUL::Window/open> method.
 
-=head2 connect
+When the browser creates the window a L<connect|POE::XUL::Application/connect>
+event is sent.
+When the window is closed L<disconnect|POE::XUL::Application/disconnect>
+event is sent.
 
-    sub connect {
-        my( $self, $event ) = @_[ OBJECT, ARG0 ];
-        # create a POE::XUL Window and child nodes.
-    }
-
-Posted from a new sub-window when it  has been created.  This is similar to
-C<boot>, in that you B<must> create a L<POE::XUL::Node> Window and child
-nodes.
-
-=head2 disconnect
-
-    sub disconnect {
-        my( $self, $event ) = @_[ OBJECT, ARG0 ];
-        # Delete the POE::XUL Window and its child nodes.
-        # But don't send those instructions to the main window
-        pxInstruction( 'empty' );
-    }
-
-Posted from the main window when a sub-window is closed.  You should
-delete all nodes related to the sub-window.  But, because the event
-
+See also L<POE::XUL::POE/connect> and L<POE::XUL::POE/disconnect>.
 
 =head1 DOM EVENTS
 
@@ -276,7 +243,6 @@ After the C<boot> event, further interaction happens via callback events
 that you defined on your nodes.  A callback may be a coderef or a POE event.
 
 Note that L<POE::XUL> events to not bubble like DOM events do.
-
 
 =head2 Click
 
@@ -301,17 +267,60 @@ See L<POE::XUL::Event/Select> for more details.
 Called when the users selects a colour in a Colorpicker, Datepicker or other
 nodes.  See L<POE::XUL::Event/Pick> for more details.
 
-=head2 POE::XUL::Event and POE::XUL::ChangeManager
+=head1 ARCHITECTURE
 
-Only changes that are wrapped in an Event will be seen by the ChangeManager
-and be mirrored in the client. L<POE::XUL::Event> will wrap the initial
-event and call it with L<POE::Kernel/call>.  If you wish to post further POE
-events, you must set the Event's done to 0, and wrap any node changes with
-L<POE::XUL::Event/wrap>.  You must call L<POE::XUL::Event/finished> to
-complete the request.
+There are many layers POE::XUL.  Maybe too many.
 
-L<POE::XUL::Event/wrap> also provides error handling;  if your code dies,
-the error message will be displayed in the browser.
+First off, the browser or xulrunner loads C<start.xul?AppName>, which loads
+the Javascript client library and any necessary CSS.  The client library
+sends a C<boot> event to the server using C<prototype.js>. 
+L<POE::Component::XUL> handles HTTP requests in the server.  For a boot
+request, it creates a L<POE::XUL::ChangeManager> for the application which
+is used by the event to capture any changes to L<POE::XUL::Node>.  The
+controler then spawns the application and calls its C<boot> state.  All
+nodes created during the boot request will have been noticed by the change
+manager.  These nodes are converted into JSON instructions by the
+ChangeManager, which are sent as the HTTP response. The JS client library
+decodes the JSON instructions, populating the XUL DOM tree with the new
+nodes.
+
+The user then interacts with the XUL elements, which will provoke DOM
+events. These events are turned into an AJAX request by the JS client
+library.  L<POE::Component::XUL> decodes these requests and hands them to the
+L<POE::XUL::Controler>.  The Controler creates and populates an
+L<POE::XUL::Event>.  The Event will get the change manager to handle any
+event I<side-effects>, such as setting C<value> of the target node.  The
+Event will then call any user-defined event listeners.  
+
+In the case of L<POE::XUL::Application>, L<POE::XUL::Session> will handle
+furthur side effects of the event, then call your application's handlers, if
+any are defined.
+
+After the event has been handled, the change manager converts any changes to
+the POE::XUL::Nodes to JSON instructions, which are sent as the HTTP
+response. The JS client library decodes the JSON instructions, modifying the
+XUL DOM tree as necessary.
+
+Understand?  Maybe the following diagram will help:
+
+                                        User
+                                         |
+    Firefox or xulrunner              DOM Node
+                                         |
+                                  +------+------+
+                                 /               \
+    JS client library          Event           Response
+                                \/                /\
+    HTTP/AJAX                 Request            JSON
+                                \/                /\
+    POE::Component::XUL       decode              ||
+    POE::XUL::Controler       create Event        ||
+    POE::XUL::Event           side effects      handled
+    POE::XUL::Session         _invoke_state       ||
+    POE::XUL::Application     event handlers      ||
+    POE::XUL::ChangeManger    record changes -> convert
+
+
 
 =head1 TODO
 
@@ -321,15 +330,9 @@ POE::XUL is still a work in progress.  Things that aren't done:
 
 =item Keepalive
 
-If a keepalive request was sent ever X seconds, the application timeout
-could be much shorter, as we would know sooner a browser window was closed.
-
-=item Sub-windows
-
-Better handling of sub-windows is needed. Events should be disassociated
-from windows.  Nodes should be associated with windows.  Changes to a node
-should be mirrored in the relevante window, regardless of where the event
-originated.
+If a keepalive request was sent every X seconds, the application timeout
+could be much shorter, as we would know sooner a browser window was closed.  
+This would allow us to recover the memory sooner.
 
 =item Comet
 
@@ -341,10 +344,6 @@ act as a keepalive.
 
 There are no tests for E<lt>colorpickerE<gt>, E<lt>datepickerE<gt>, 
 E<lt>toolbar<gt>, E<lt>listbox<gt>, E<lt>tab<gt> and more.
-
-=item POE::XUL::Application
-
-A base class that would handle most of the simple house-keeping.
 
 =back
 
@@ -372,7 +371,9 @@ it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
-perl(1), L<POE::XUL::Node>, L<POE::XUL::Event>, L<POE::XUL::Controler>.
+perl(1), L<POE::XUL::Node>, L<POE::XUL::Event>, L<POE::XUL::Controler>, 
+L<POE::XUL::Application>,
+L<http://www.prototypejs.org/>.
 
 =cut
 

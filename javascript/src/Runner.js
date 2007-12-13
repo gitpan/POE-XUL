@@ -37,15 +37,32 @@ _.run = function ( response ) {
 	this.resetBuffers();
 
     var commands = [];
+    var accume = {};
+    var for_win = window.name;
+    var have_accume = 0;
 	for( var R=0; R < response.length; R++ ) {
-        commands.push( {
-                methodName: response[R][0],
-                nodeId: response[R][1],
-                arg1: response[R][2], 
-                arg2: response[R][3],
-                arg3: response[R][4],
-                arg4: response[R][5],
-            } );
+        var I = response[R];
+        if( I[0] == 'for' ) {     // which window is this for?
+            for_win = I[1];
+        }
+        else if( for_win == window.name ) { // for our window?
+            var cmd = {
+                methodName: I[0],
+                nodeId: I[1],
+                arg1: I[2], 
+                arg2: I[3],
+                arg3: I[4],
+                arg4: I[5],
+            };
+            commands.push( cmd );           
+        }
+        else if( accume[ for_win ] ) {      // other window?
+            accume[ for_win ].push( I );
+        }
+        else {
+            accume[ for_win ] = [ I ];
+            have_accume = 1;
+        }
     }
 
     this.EXs = [];
@@ -58,6 +75,16 @@ _.run = function ( response ) {
     }
 
     this.runCommands( commands );
+
+    if( have_accume ) {
+        if( window.name == '' ) {
+            // we are the main window
+            $application.for_window( accume );
+        }
+        else {
+            window.opener[ '$application' ].for_window( accume );
+        }
+    }
 }
 
 // ------------------------------------------------------------------
@@ -76,6 +103,9 @@ _.runBatch = function ( commands, late ) {
     if( late )
         fb_log( 'runBatch n=' + commands.length + " late=" + late );
     var count = 0;
+    var accume = {};
+    var for_win = window.name || '';
+
     while( commands.length ) {
         count++;
         try {
@@ -91,7 +121,7 @@ _.runBatch = function ( commands, late ) {
             if( rv || count > this.slice_size ) {
                 if( $status ) 
                     $status.progress( (this.nCmds - commands.length), 
-                                       this.nCmds );
+                                           this.nCmds );
                 this.deferCommands( commands, late );
                 return;
             }
@@ -298,8 +328,11 @@ _.runCommand = function (command) {
         fb_log( methodName );
         rv = 2;
     }
+    else if( window.name ) {
+        alert( window.name + ": Unknown command '" + methodName + "'" );
+    }
     else {
-        alert( "Unknown command " + methodName );
+        alert( "Unknown command '" + methodName + "'" );
     }
     return rv;
 }

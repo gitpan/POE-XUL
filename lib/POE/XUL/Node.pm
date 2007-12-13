@@ -1,7 +1,9 @@
 package POE::XUL::Node;
-# $Id: Node.pm 654 2007-12-07 14:28:39Z fil $
+# $Id: Node.pm 666 2007-12-12 23:52:44Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
+
+
 
 use strict;
 use warnings;
@@ -10,6 +12,7 @@ use Scalar::Util qw( blessed );
 use POE::XUL::Constants;
 use POE::XUL::TextNode;
 use POE::XUL::CDATA;
+use POE::XUL::Window;
 use Scalar::Util qw( blessed );
 use HTML::Entities qw( encode_entities_numeric );
 
@@ -45,7 +48,14 @@ my @OTHER_ELEMENTS = qw(
     Script Boot RawCmd pxInstructions
 );
 
-my %LOGICAL_ATTS = ( selected => 1 );
+my %LOGICAL_ATTS = ( 
+        selected => 1, 
+        disabled => 1, 
+        flex => 1,
+        autoFill => 1,
+        autocheck => 1,
+#        checked => 1
+    );
 
 # creating --------------------------------------------------------------------
 
@@ -79,8 +89,16 @@ sub import
 sub new 
 {
 	my ($class, @params) = @_;
-	my $self = bless {attributes => {}, children => [], events => {}}, $class;
 
+	my $self;
+    if( $params[0] eq 'tag' and $params[1] eq 'window' ) {
+        $self = bless {attributes => {}, children => [], events => {}}, 
+                        'POE::XUL::Window';
+    } else {
+        $self = bless {attributes => {}, children => [], events => {}}, $class;
+    }
+
+#    POE::XUL::Session::Delegate::__check_ref( 'new1', $self );
 
     if( DEBUG and not $CM and $INC{'POE/XUL/ChangeManager.pm'} ) {
         Carp::cluck "Building a POE::XUL::Node, but no ChangeManager avaiable";
@@ -100,13 +118,15 @@ sub new
             $self->set_attribute( $param => shift @params );
         }
 		elsif ($param =~ /^[A-Z]/) { 
-            $self->attach($param => shift @params) 
+            $self->attach($param => shift @params );
         }
 		else { 
             croak "unrecognized param: [$param]" 
         }
 	}
+#    POE::XUL::Session::Delegate::__check_ref( 'new2', $self );
     $CM->after_creation( $self ) if $CM;
+#    POE::XUL::Session::Delegate::__check_ref( 'new3', $self );
 
 	return $self;
 }
@@ -127,6 +147,10 @@ sub Boot
     my( $class, $msg ) = @_;
     if( $CM ) {
         $CM->Boot( $msg );
+    }
+    my $server = $POE::XUL::Application::server;
+    if( $server ) {
+        $server->Boot( $msg );
     }
     return;
 }
@@ -252,6 +276,9 @@ sub set_attribute
     if( $key eq 'tag' ) {
         $value = lc $value;
         $value =~ s/^html_/html:/;
+        if( $value eq 'window' and 0 ) {
+            $self = bless $self, 'POE::XUL::Window';
+        }
     }
 
     if( $LOGICAL_ATTS{ $key } ) {
@@ -263,9 +290,9 @@ sub set_attribute
         
     }
 
-#    if( $key eq 'selectedIndex' ) {
-#        carp $self->id, ".$key=$value";
-#    }
+    if( DEBUG and $key eq 'id' ) {
+        carp $self->id, ".$key=$value";
+    }
 
     $self->{attributes}{$key} = $value;
     $CM->after_set_attribute( $self, $key, $value ) if $CM;
@@ -284,11 +311,7 @@ sub remove_attribute
 *removeAttribute = \&remove_attribute;
 
 ##############################################################
-sub is_window
-{ 
-    my( $self ) = @_;
-    return( ($self->{attributes}{tag}||'') eq 'window');
-}
+sub is_window { 0 }
 
 ##############################################################
 *id = __mk_accessor( 'id' );
@@ -348,31 +371,6 @@ sub show
     $self->style( $css );
 }
 
-
-
-##############################################################
-# Turn a node into an iframe that loads itself
-# This is a major mess.
-# ChangeManager will use State to create the JSON command
-# POEXUL_Runner then tells POEXUL_Application to framify
-# POEXUL_Application replaces the element with a new iframe
-# iframe.src = "/xul?type=XUL-from&source_id=OUR-ID
-# POE::Component::XUL and POE::XUL::Controler then send us over as_xml
-sub framify
-{
-    my( $self ) = @_;
-    $CM->after_framify( $self ) if $CM;
-}
-
-##############################################################
-# DOM-like window.close()
-sub close
-{
-    my( $self ) = @_;
-    croak qq(Can't locate object method "close" via package ").
-                    ref( $self ) . qq(") unless $self->tag eq 'window';
-    $CM->unregister_window( $self ) if $CM;
-}
 
 # compositing -----------------------------------------------------------------
 
@@ -497,14 +495,31 @@ sub _add_child_at_index {
 
 sub attach { 
     my( $self, $name, $listener ) = @_;
-    $self->{events}->{ $name } = $listener
+
+    my $state;
+
+    my $server = $POE::XUL::Application::server;
+    if( $server ) {
+        # auto-create the handler in the application
+        $state = $server->attach_handler( $self, $name, $listener );
+    }
+    else {
+        $state = $listener||$name;
+    }
+    DEBUG and warn $self->id, ".$name = $state";
+    return unless $state;
+    $self->{events}->{ $name } = $state;
+    return 1;
 }
+*addEventListener = \&attach;
 
 sub detach {
 	my ($self, $name) = @_;
 	my $listener = delete $self->{events}->{$name};
 	croak "no listener to detach: $name" unless $listener;
+    # TODO: remove the POE state if we auto-created it?
 }	
+*removeEventListener = \&detach;
 
 sub event {
 	my ($self, $name) = @_;
@@ -520,6 +535,8 @@ sub dispose {
 	my $self = shift;
 	$_->dispose for grep { blessed $_ } $self->children;
 	delete $self->{events};
+    $self->{children} = [];
+    # TODO: remove any events that auto-created handler states
 }
 *destroy = \&dispose;
 
@@ -528,7 +545,7 @@ sub is_destroyed { !shift->{events} }
 sub DESTROY
 {
     my( $self ) = @_;
-    # carp "DESTROY ", $self->id;
+    # carp "DESTROY ", ($self->id||$self);
     $CM->after_destroy( $self ) if $CM;
 }
 
@@ -941,15 +958,32 @@ Close a sub-window.  Obviously may only be called on a Window element.
 
 =head2 attach
 
-    $node->attach( $Event => $poe_event );
+    $node->attach( $Event [ => $poe_event ] );
+    $node->attach( $Event => $coderef );
+    $node->attach( $Event );
+
+Attaches an event listener to a node.  When C<$Event> happens (normaly in
+response to a DOM event) the C<$poe_event> is posted to the application
+session.  Alternatively, the C<$coderef> is called.  In both cases, an
+L<POE::XUL::Event> object is passed as the first parameter.  C<$poe_event>
+defaults to C<$Event>.
+
+C<attach()> will auto-create handlers for C<POE::XUL::Application>.
 
 =head2 detach
 
     $node->detach( $Event );
 
+Removes the event listener for C<$Event>.  Auto-created handlers are
+currently not removed.
+
 =head2 event
 
     my $listener = $node->event( $Event );
+
+Gets the node's event listener for C<$Event>.  A listener is either a
+coderef, or the name of a POE event handler in the application's session. 
+Application code will rarely need to call this method.
 
 =head2 dispose / distroy
 

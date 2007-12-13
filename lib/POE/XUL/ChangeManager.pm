@@ -1,5 +1,6 @@
-package POE::XUL::ChangeManager;
-# $Id: ChangeManager.pm 654 2007-12-07 14:28:39Z fil $
+package 
+    POE::XUL::ChangeManager;
+# $Id: ChangeManager.pm 666 2007-12-12 23:52:44Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
@@ -25,7 +26,7 @@ use Scalar::Util qw( weaken blessed );
 
 use constant DEBUG => 0;
 
-our $WIN_NAME = 'POEXUL00';
+our $WIN_NAME = 'POEXUL000';
 
 ##############################################################
 sub new
@@ -34,14 +35,32 @@ sub new
 
     my $self = bless {
             window      => undef(), 
+            current_event => undef(), 
             states      => {},
             nodes       => {},
             destroyed   => [], 
-            prepend     => []
+            prepend     => [],
+            other_windows => []
         }, $package;
 
     $self->build_json;
     return $self;
+}
+
+##############################################################
+sub current_event
+{
+    my $self = shift;
+    my $rv = $self->{current_event};
+    $self->{current_event} = $_[0] if $_[0];
+    return $rv;
+}
+
+##############################################################
+sub window
+{
+    my( $self ) = @_;
+    return $self->{window};
 }
 
 ##############################################################
@@ -88,10 +107,11 @@ sub dispose
         next unless defined $N and blessed $N and $N->can( 'dispose' );
         $N->dispose;
     }
-    $self->{nodes} = {};
-    $self->{destroyed} = [];
-    $self->{states} = {};
-	$self->{prepend} = [];
+    $self->{nodes}         = {};
+    $self->{destroyed}     = [];
+    $self->{states}        = {};
+	$self->{prepend}       = [];
+	$self->{other_windowx} = [];
 }
 
 ##############################################################
@@ -100,14 +120,21 @@ sub flush
 {
 	my( $self ) = @_;
 	local $_;
-    # XXX: we could cut down on trafic if we don't flush deleted nodes
+    # TODO: we could cut down on trafic if we don't flush deleted nodes
     # that are children of a deleted parent
-	my @out = ( @{ $self->{prepend} },                      # our stuff
+
+    # XXX: How to prevent the flushing of deleted Window() and children?
+	my @out = @{ $self->{prepend} };                        # our stuff
+    my @more = (
                 map( { $_->flush } @{$self->{destroyed}} ), # old stuff
                 $self->flush_node( $self->{window} )        # new/changed stuff
               );
+    if( @more ) {
+        push @out, [ 'for', '' ], @more;
+    }
 
     foreach my $win ( @{ $self->{other_windows} || [] } ) {
+        push @out, [ 'for', $win->id ];
         push @out, $self->flush_node( $win );
     }
 	$self->{destroyed} = [];
@@ -144,6 +171,8 @@ sub node_state
 
     my $state = POE::XUL::State->new;
     $self->{states}{ "$node" } = $state;
+    # set the nodes attribute to the ID generated for the state
+    $node->{attributes}{id} ||= $state->id;
 
     DEBUG and 
         xdebug "$self Created state ", $state->id, " for $node\n";
@@ -160,11 +189,15 @@ sub register_window
 {
     my( $self, $node ) = @_;
     if( $self->{window} ) {
-        xwarn "register_window $node";
+        DEBUG and xwarn "register_window $node";
         push @{ $self->{other_windows} }, $node;
     }
     else {
         $self->{window} = $node;
+    }
+    my $server = $POE::XUL::Application::server;
+    if( $server ) {
+        $server->register_window( $node );
     }
 }
 
@@ -173,12 +206,16 @@ sub unregister_window
 {
     my( $self, $node ) = @_;
     if( $node == $self->{window} ) {
-        confess "You aren't allowed to unregister the main window";
+        confess "You aren't allowed to unregister the main window!\n";
     }
-    xwarn "unregister_window $node";
-    $self->{other_windows} = [
-                    grep { $_ != $node } @{ $self->{other_windows}||[] }
-                ];
+    DEBUG and xwarn "unregister_window $node";
+    my @new;
+    foreach my $win ( @{ $self->{other_windows}||[] } ) {
+        next if $win == $node;
+        push @new, $win;
+    }
+
+    $self->{other_windows} = \@new;
     return;
 }
 
@@ -202,6 +239,8 @@ sub unregister_node
 {
     my( $self, $id ) = @_;
     my $node = delete $self->{nodes}{ $id };
+    # 2007/12 do NOT $node->dispose here.  unregister_node is also
+    # used by ->after_set_attribute()
     return;
 }
 
@@ -241,7 +280,8 @@ sub after_set_attribute
     }
 	elsif( $key eq 'id' ) {
         return if $state->{id} eq $value;
-        DEBUG and xdebug "node $state->{id} is now $value";
+        DEBUG and 
+            xdebug "node $state->{id} is now $value";
         my $old_id = $state->{id};
 
         $state->set_attribute($key, $value);
@@ -297,7 +337,7 @@ sub before_remove_child
 sub after_creation
 {
     my( $self, $node ) = @_;
-    my $state   = $self->node_state( $node );
+    my $state = $self->node_state( $node );
 
     return if $node->getAttribute( 'id' );
     $node->setAttribute( id => $state->{id} );
@@ -328,7 +368,8 @@ sub after_framify
 # So that we can detect changes between requests
 sub request_start
 {
-    my( $self ) = @_;
+    my( $self, $event ) = @_;
+    $self->{current_event} = $event;
     $self->{responded} = 0;
 }
 
@@ -336,13 +377,33 @@ sub request_done
 {
     my( $self ) = @_;
     $self->{responded} = 1;
+    my $event = delete $self->{current_event};
+    $event->dispose if $event;
+    undef( $event );
+
+#    use Devel::Cycle;
+#    find_cycle( $self );
+}
+
+##############################################################
+sub wrapped_error
+{
+    my( $self, $string ) = @_;
+    if( $self->{current_event} ) {
+        # xwarn "wrapped with $self->{current_event}";
+        $self->error_response( $self->{current_event}->{resp}, $string );
+    }
+    else {
+        # TODO: what to do with errors that happen between events?
+        xlog "Error between events: $string";
+    }
 }
 
 ##############################################################
 sub error_response
 {
     my( $self, $resp, $string ) = @_;
-    xlog "error_response $resp $string";
+    xlog "error_response $string";
 
     return $self->json_response( $resp, [[ 'ERROR', '', $string]] );
 }
@@ -362,6 +423,7 @@ sub json_response
     my( $self, $resp, $out ) = @_;
 
     if( $self->{responded} ) {
+        confess "Already responded";
         xcarp "Already responded";
         return;
     }
@@ -591,6 +653,7 @@ sub popup_window
     $features ||= {};
     croak "Features must be a hashref" unless 'HASH' eq ref $features;
     $self->Prepend( [ 'popup_window', $name, $features ] );
+    return $name;
 }
 
 ##############################################################

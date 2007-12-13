@@ -10,8 +10,8 @@ use Data::Dumper;
 use constant DEBUG=>0;
 
 use t::PreReq;
-use Test::More ( tests=> 30 );
-t::PreReq::load( 30, qw( HTTP::Request LWP::UserAgent ) );
+use Test::More qw( no_plan );
+t::PreReq::load( 1, qw( HTTP::Request LWP::UserAgent ) );
 
 use t::Client;
 use t::Server;

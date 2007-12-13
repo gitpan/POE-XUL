@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 20_changemanager.t 418 2007-05-18 00:42:25Z fil $
+# $Id: 20_changemanager.t 664 2007-12-11 22:25:08Z fil $
 
 use strict;
 use warnings;
@@ -33,6 +33,7 @@ is_deeply( $node->getAttribute( 'sizetocontent' ), 1, "It's the same node" );
 ##############################
 my $buffer = $CM->flush;
 is_deeply( $buffer, [
+        [ 'for', '' ],
         [ qw( new PX0 window ), '' ],
         [ qw( set PX0 id top ) ],
         [ qw( set top sizetocontent 1 ) ],
@@ -45,7 +46,8 @@ $window->appendChild( $box );
 
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [[ qw( new PX1 hbox top 0) ],
+is_deeply( $buffer, [[ 'for', '' ],
+                     [ qw( new PX1 hbox top 0) ],
                      [ qw( textnode PX1 0), "hello world" ]
                     ],  "Only the new stuff" )
     or die Dumper $buffer;
@@ -57,6 +59,7 @@ $window->add_child( $other, 0 );
 $buffer = $CM->flush;
 
 is_deeply( $buffer, [
+                     [ 'for', '' ],
                      [ qw( bye PX1 ) ],
                      [ qw( new PX3 vbox top 0 ) ],
                      [ qw( textnode PX3 0 bonk ) ],
@@ -69,7 +72,8 @@ $window->add_child( $third );
 
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [[ qw( new PX5 vbox top 1 ) ],
+is_deeply( $buffer, [[ 'for', '' ],
+                     [ qw( new PX5 vbox top 1 ) ],
                      [ qw( textnode PX5 0 zonk ) ],
                     ],  "new node changes" )
     or die Dumper $buffer;
@@ -80,7 +84,7 @@ $third->textNode( "don't you loose my number" );
 
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [
+is_deeply( $buffer, [[ 'for', '' ],
                      [ qw( textnode PX5 0), "don't you loose my number" ],
                     ],  "textNode changes" )
     or die Dumper $buffer;
@@ -92,7 +96,7 @@ $window->appendChild( $node );
 
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [
+is_deeply( $buffer, [[ 'for', '' ],
                      [ qw( new PX9 description top 2 ) ],
                      [ qw( textnode PX9 0), "This is a " ],
                      [ qw( new PX7 html:a PX9 1 ) ],
@@ -113,7 +117,7 @@ my $W = Window( id=> 'top', $b );
 
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [
+is_deeply( $buffer, [[ 'for', '' ],
                      [ 'new', 'PX13', 'window', '' ],
                      [ 'set', 'PX13', 'id', 'top' ],
                      [ 'new', 'PX12', 'button', 'top', 0 ],
@@ -129,7 +133,7 @@ $b->removeAttribute( 'selected' );
 
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [
+is_deeply( $buffer, [[ 'for', '' ],
                      [ 'set', 'B1', 'selected', 'true' ],
                      [ 'remove', 'B1', 'selected' ]
                     ],  "Remove an attribute" )
@@ -142,7 +146,7 @@ $W->appendChild( 'Hello world' );
 
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [
+is_deeply( $buffer, [[ 'for', '' ],
                      [ 'textnode', 'top', 1, 'Hello world' ],
                     ],  "Added a textnode" )
     or die Dumper $buffer;
@@ -152,7 +156,7 @@ $W->removeChild( 1 );
 
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [
+is_deeply( $buffer, [[ 'for', '' ],
                      [ 'bye-textnode', 'top', 1 ],
                     ],  "Removed a textnode" )
     or die Dumper $buffer;
@@ -176,7 +180,7 @@ $W->removeChild( 0 );
 
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [ [ qw( bye B1 ) ] ],  "Remove a child" )
+is_deeply( $buffer, [ [ 'for', '' ], [ qw( bye B1 ) ] ],  "Remove a child" )
     or die Dumper $buffer;
 
 
@@ -186,7 +190,7 @@ my $JS = "this is some JS";
 $W->appendChild( Script( $JS ) );
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [
+is_deeply( $buffer, [[ 'for', '' ],
                      [ 'new', "PX16", 'script', 'top', 0 ],
                      [ 'set', "PX16", 'type', 'text/javascript' ],
                      [ 'cdata', 'PX16', 0, $JS ]
@@ -200,7 +204,7 @@ $JS = "Different JS";
 $cdata->replaceData( 0, 100, $JS );
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [
+is_deeply( $buffer, [[ 'for', '' ],
                      [ 'cdata', 'PX16', 0, $JS ]
                     ],  "Changed CDATA" )
     or die Dumper $buffer;
@@ -209,7 +213,7 @@ is_deeply( $buffer, [
 $cdata->insertData( 0, "Yet again " );
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [
+is_deeply( $buffer, [[ 'for', '' ],
                      [ 'cdata', 'PX16', 0, "Yet again Different JS" ]
                     ],  "Changed CDATA" )
     or die Dumper $buffer;
@@ -218,7 +222,7 @@ is_deeply( $buffer, [
 $cdata->appendData( " man" );
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [
+is_deeply( $buffer, [[ 'for', '' ],
                      [ 'cdata', 'PX16', 0, "Yet again Different JS man" ]
                     ],  "Changed CDATA" )
     or die Dumper $buffer;
@@ -228,7 +232,7 @@ $cdata->deleteData( 0, 10 );
 $cdata->deleteData( 12, 4 );
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [
+is_deeply( $buffer, [[ 'for', '' ],
                      [ 'cdata', 'PX16', 0, "Different JS" ]
                     ],  "Changed CDATA" )
     or die Dumper $buffer;
@@ -238,7 +242,7 @@ is_deeply( $buffer, [
 $W->appendChild( Label( 'honk' ) );
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [ 
+is_deeply( $buffer, [[ 'for', '' ], 
                      [ qw( new PX17 label top 1 ) ], 
                      [ qw( textnode PX17 0 honk ) ]
                     ],  "Add a child" )
@@ -251,7 +255,7 @@ $W->appendChild( ListItem( ListCell( label=>'honk' ),
                          ) );
 $buffer = $CM->flush;
 
-is_deeply( $buffer, [ 
+is_deeply( $buffer, [[ 'for', '' ], 
                      [ qw( new PX21 listitem top 2 ) ], 
                      [ qw( new PX19 listcell PX21 0 ) ],
                      [ qw( set PX19 label honk ) ],

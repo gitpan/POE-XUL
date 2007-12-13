@@ -1,5 +1,5 @@
 package POE::XUL::TextNode;
-# $Id: TextNode.pm 654 2007-12-07 14:28:39Z fil $
+# $Id: TextNode.pm 664 2007-12-11 22:25:08Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 
 use strict;
@@ -16,6 +16,10 @@ sub new
     my( $package, $text ) = @_;
     return bless { attributes => { value=>$text } }, $package;
 }
+
+################################################################
+sub is_window { 0 }
+
 
 ################################################################
 sub nodeValue

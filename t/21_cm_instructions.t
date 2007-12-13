@@ -26,6 +26,7 @@ my $W = Window( id=> 'top', $b );
 my $buffer = $CM->flush;
 
 is_deeply( $buffer, [
+                     [ 'for', '' ],
                      [ 'new', 'PX1', 'window', '' ],
                      [ 'set', 'PX1', 'id', 'top' ],
                      [ 'new', 'PX0', 'button', 'top', 0 ],
@@ -49,9 +50,11 @@ $W->appendChild( Label( 'bonk' ) );
 
 $buffer = $CM->flush;
 is_deeply( $buffer, [
+                [ 'for', '' ],
                 [ 'new', 'PX4', 'label', 'top', 2 ],
                 [ 'textnode', 'PX4', 0, 'honk' ],
                 [ 'timeslice' ],
+                [ 'for', '' ],
                 [ 'new', 'PX6', 'label', 'top', 3 ],
                 [ 'textnode', 'PX6', 0, 'bonk' ],
             ],  "Instructions: flush + timeslice" )
@@ -61,7 +64,7 @@ is_deeply( $buffer, [
 pxInstructions( 'popup_window' );
 $buffer = $CM->flush;
 is_deeply( $buffer, [
-                [ 'popup_window', 'POEXUL00', {} ],
+                [ 'popup_window', 'POEXUL000', {} ],
             ],  "Instruction: popup_window w/ defaults" )
     or die Dumper $buffer;
 

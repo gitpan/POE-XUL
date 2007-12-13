@@ -1,5 +1,12 @@
 Revision history for Perl extension POE::XUL.
 
-0.0100  Fri Dec 6 2007
+0.0300 Dec 12 2007
+    - Added POE::XUL::Application.
+    - Better documentation
+    - Many other fixes
+
+0.0200 Dec 7 2007
+
+0.0100 Dec 6 2007
     - First release to CPAN
 

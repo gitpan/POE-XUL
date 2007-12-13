@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 90_complete.t 509 2007-09-12 07:20:01Z fil $
+# $Id: 90_complete.t 664 2007-12-11 22:25:08Z fil $
 
 use strict;
 use warnings;
@@ -11,8 +11,8 @@ use Data::Dumper;
 use constant DEBUG=>0;
 
 use t::PreReq;
-use Test::More ( tests=> 733 );
-t::PreReq::load( 733, qw( HTTP::Request LWP::UserAgent ) );
+use Test::More qw( no_plan );
+t::PreReq::load( 1, qw( HTTP::Request LWP::UserAgent ) );
 
 use t::Client;
 use t::Server;
@@ -43,6 +43,7 @@ my $URI = $browser->boot_uri;
 my $resp = $UA->get( $URI );
 
 my $data = $browser->decode_resp( $resp, 'boot' );
+$browser->check_boot( $data );
 $browser->handle_resp( $data, 'boot' );
 
 ok( $browser->{W}, "Got a window" );

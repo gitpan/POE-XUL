@@ -1,5 +1,5 @@
 package POE::XUL::State;
-# $Id: State.pm 596 2007-11-14 03:36:54Z fil $
+# $Id: State.pm 664 2007-12-11 22:25:08Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
@@ -62,15 +62,12 @@ sub as_command {
     if( $is_destroyed ) {
         return $self->get_buffer_as_commands;
     }
-    elsif( $self->{is_framify} ) {
-        return $self->make_command_framify;
-    }
     elsif( $self->is_textnode ) {
         return $self->make_command_textnode;
     }
     elsif( $self->{cdata} ) {
     	return unless $self->{is_new};
-        return $self->make_command_cdata ;
+        return $self->make_command_cdata;
     }
     else {
         return $self->make_command_new, $self->get_buffer_as_commands;
@@ -174,21 +171,6 @@ sub make_command_remove
 {
 	my($self, $key) = @_;
     return [ 'remove', $self->get_id, $key ];
-}
-
-#############################################################
-sub make_command_framify
-{
-	my( $self ) = @_;
-
-    DEBUG and warn "framify is_new=$self->{is_new} is_framify=$self->{is_framify}";
-
-    my @ret = ( $self->make_command_new, $self->get_buffer_as_commands );
-    push @ret, [ framify => $self->{id} ] if $self->{is_framify} == 1;
-    $self->{is_framify} = 2;
-#    use Data::Dumper;
-#    warn "framify = ", Dumper \@ret;
-    return @ret;
 }
 
 

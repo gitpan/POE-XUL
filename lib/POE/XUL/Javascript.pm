@@ -1,0 +1,77 @@
+package POE::XUL::Javascript;
+# $Id$
+# Copyright Philip Gwyn 2007.  All rights reserved.
+
+
+1;
+
+__DATA__
+
+=head1 NAME
+
+POE::XUL::Javascript - POE::XUL Javascript client library documentation
+
+=head1 SYNOPSIS
+
+=head1 DESCRIPTION
+
+This documentation needs to be written
+
+=head1 OBJECTS
+
+=head2 $application
+
+=head3 getSID
+
+    var SID = $application.getSID();
+
+=head3 runRequest
+
+    $application.runRequest( { event: 'Something', 
+                               source_id: 'Some-ID'
+                           } );
+                               
+=head3 crash
+
+    $application.crash( "Something very bad happened" );
+
+=head3 status
+
+    $application.status( 'run' );
+
+=head3 fb_log
+
+    fb_log( "Short message for firebox's console" );
+
+=head1 LIBRARIES
+
+=head2 prototype.js
+
+L<http://www.prototypejs.org/>.
+
+=head2 util.js
+
+=head1 AUTHOR
+
+Philip Gwyn E<lt>gwyn-at-cpan.orgE<gt>
+
+=head1 CREDITS
+
+Based on XUL::Node by Ran Eilam.
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2007 by Philip Gwyn.  All rights reserved;
+
+Copyright 2003-2004 Ran Eilam. All rights reserved.
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+
+=head1 SEE ALSO
+
+perl(1), L<POE::XUL>, L<POE::XUL::Node>, , L<POE::XUL::TextNode>.
+
+=cut
+

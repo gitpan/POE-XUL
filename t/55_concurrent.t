@@ -1,12 +1,12 @@
 #!/usr/bin/perl
-# $Id: 55_concurrent.t 604 2007-11-15 23:46:57Z fil $
+# $Id: 55_concurrent.t 664 2007-12-11 22:25:08Z fil $
 
 use strict;
 use warnings;
 
 use JSON::XS;
 use POE;
-use Test::More; # 'no_plan';
+use Test::More 'no_plan';
 use t::Client;
 use t::PreReq;
 
@@ -15,8 +15,7 @@ use constant DEBUG=>0;
 my $Q = 5;
 my $N = 10;
 
-plan( tests => $N * 56 );
-t::PreReq::load( ($N * 56), qw( POE::Component::Client::HTTP 
+t::PreReq::load( $N, qw( POE::Component::Client::HTTP 
                           HTTP::Request POE::Wheel::Run ) );
 
 if( $ENV{HARNESS_PERL_SWITCHES} ) {
@@ -123,10 +122,7 @@ sub boot_back
 {
     my( $self, $kernel, $data ) = @_[ OBJECT, KERNEL, ARG0 ];
 
-    is( $data->[0][0], 'SID', "First response is the SID" );
-    is( $data->[2][0], 'new', "Second response is the new" );
-    is( $data->[2][2], 'window', " ... window" );
-    
+    $self->{browser}->check_boot( $data );    
     $self->{browser}->handle_resp( $data, $self->{doing} );
 
     ok( $self->{browser}->{W}, "Got a window" );

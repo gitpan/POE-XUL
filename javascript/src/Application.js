@@ -225,97 +225,6 @@ _.exception = function ( type, EXs ) {
     $application.crash( type + " ERROR " + msg.join( "\n" ) );
 }
 
-// ------------------------------------------------------------------
-// Turn a given element into an iframe that will load the XUL
-// Once loaded, the XUL should call .fragment() to set itself up
-_.framify = function ( id ) {
-
-    var event = this.setupEvent( { event: 'XUL-from', 
-                                   source_id: id } );
-
-    var url = this.conduit.eventURI( event );
-
-    var iframe = $( "IFRAME-" + id );
-    if( iframe ) {
-        iframe.setAttribute( 'src', url );
-    }
-    else {
-        iframe = document.createElement( 'iframe' );
-        iframe.setAttribute( 'src', url );
-        iframe.setAttribute( 'id', "IFRAME-" + id );
-
-        var el = $( id );
-        if( el ) {
-            // alert( el.boxObject.height );
-            var style = window.getComputedStyle( el, '' );
-            var w = parseInt( style.marginLeft ) +
-                    parseInt( style.marginRight );
-            iframe.setAttribute( 'width', w + el.boxObject.width );
-            iframe.setAttribute( 'height', el.boxObject.height );
-            iframe.setAttribute( 'style', el.style.cssText );
-
-            el.parentNode.replaceChild( iframe, el );
-            this.frames.push( id );
-
-            iframe.style.overflow = "hidden";
-        }
-        else {
-            document.appendChild( iframe );
-        }
-    }
-}
-
-_.recalcFrames = function () {
-    var self=this;
-    window.setTimeout( function () { self._recalcFrames(); }, 
-                       this.BLIP 
-                     );
-}
-
-_._recalcFrames = function () {
-    for( var q = 0; q < this.frames.length ; q++ ) {
-        this.recalcFrame( this.frames[q] );
-    }
-}
-
-_.recalcFrame = function ( id ) {
-    var iframe = $( "IFRAME-" + id );
-    if( !iframe ) {
-        // TODO : remove the id from .frames[]
-        return;
-    }
-
-    var P = iframe.parentNode;
-
-    var style = window.getComputedStyle( P, '' );
-    var w = 0;
-    w += parseInt( style.paddingLeft ) +
-                    parseInt( style.paddingRight );
-    w += parseInt( style.borderLeftWidth ) +
-                parseInt( style.borderRightWidth );
-    window.status = "w=" + w + " width=" + P.boxObject.width + 
-                               " height=" + P.boxObject.height;
-    iframe.setAttribute( 'width', w + P.boxObject.width );
-    iframe.setAttribute( 'height', P.boxObject.height );
-
-    return;
-    alert( "bonk 0" );
-    iframe.contentWindow.$application.recalcFragmentFrame( id, 
-                                    iframe.width, iframe.height );
-    window.status = "bonk 1";
-    return;
-}
-
-_.recalcFragmentFrame = function ( id, w, h ) {
-
-    var el = $( id );    
-    el.width = w;
-    window.status = "bonk 2";
-    el.height = h;
-
-    window.status = "bonk";
-    return;    
-}
 
 // events ---------------------------------------------------------------------
 
@@ -513,7 +422,7 @@ _.runResponse = function ( json ) {
         this.crash( "Response didn't include JSON" );
     }
     else if( 'object' != typeof json && 'Array' != typeof json ) {
-        this.crash( "Response isn't an array" );
+        this.crash( "Response isn't an array: " + typeof json );
     }
     else {
         this.runner.run( json );
@@ -661,4 +570,23 @@ _.disconnect = function ( id ) {
     this.runRequest( { event: 'disconnect', 
                        window: id 
                    } );
+}
+
+// ------------------------------------------------------------------
+// Instructions for another window
+_.for_window = function ( accume ) {
+    for( var id in accume ) {
+        var w = this.other_windows[ id ];
+
+        var name = id;
+        if( !w && window.name == id ) {
+            // either window was already closed, or we are the main window
+            w = window;
+            name = 'main window';
+        }
+        var cmds = accume[ id ];
+        delete accume[ id ];
+        fb_log( "Instructions for |" + name + "| + count=" + cmds.length );
+        w['$application'].runResponse( cmds );
+    }
 }

@@ -1,5 +1,5 @@
 package POE::XUL::CDATA;
-# $Id: CDATA.pm 654 2007-12-07 14:28:39Z fil $
+# $Id: CDATA.pm 664 2007-12-11 22:25:08Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 
 use strict;
@@ -17,6 +17,9 @@ sub new
     $self->nodeValue( $data );
     return $self;
 }
+
+################################################################
+sub is_window { 0 }
 
 ################################################################
 sub update_CM

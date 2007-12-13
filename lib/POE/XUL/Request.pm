@@ -1,5 +1,5 @@
 package POE::XUL::Request;
-# $Id: Request.pm 657 2007-12-07 18:03:30Z fil $
+# $Id: Request.pm 665 2007-12-12 14:10:45Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 
 use strict;
@@ -66,7 +66,7 @@ sub param
             $self->{P}{$key} = $value;
         }
         else {
-            $self->{P}->{$key} = [ $value ];
+            $self->{P}{$key} = [ $value ];
         }
     }
     my $V = $self->{P}->{$key};

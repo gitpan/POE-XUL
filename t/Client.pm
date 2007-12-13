@@ -3,6 +3,7 @@ package t::Client;
 use strict;
 use warnings;
 use Data::Dumper;
+use Carp;
 
 use JSON::XS;
 
@@ -35,6 +36,7 @@ sub new
     $self->{name} ||= '';
     $self->{NODES} = $NODES;
     $self->{NODES} = {} if $self->{parent};
+    $self->{R} = 0;
     return $self;
 }
 
@@ -74,9 +76,17 @@ sub check_boot
     my( $self, $data ) = @_;
 
     is( $data->[0][0], 'SID', "First response is the SID" );
-    is( $data->[1][0], 'boot', "Second response is the boot message" );
-    is( $data->[2][0], 'new', "Second response is the new" );
-    is( $data->[2][2], 'window', " ... window" );
+    my $n = 1;
+    if( $data->[$n][0] ne 'for' ) {
+        is( $data->[$n][0], 'boot', "Second response is the boot" );
+        ok( $data->[$n][1],         " ... message" );
+        $n++;
+    }
+    is( $data->[$n][0], 'for', "Next response is for" );
+    is( $data->[$n][1], '',    " ... the main window" );
+    $n++;
+    is( $data->[$n][0], 'new', "Last response is the new" );
+    is( $data->[$n][2], 'window', " ... window" );
 }
 
 ######################################################
@@ -88,173 +98,230 @@ sub handle_resp
     return unless @$data;
 
 #    warn Dumper $data;
+    my %accume;
+    my $for = $self->{name};
     foreach my $I ( @$data ) {
-        my( $op, $id, @args ) = @$I;
-        next unless $op;
-        if( $op eq 'ERROR' ) {
-            die $I->[2];
+        if( $I->[0] eq 'for' ) {
+            $for = $I->[1];
+            next;
         }
-
-        next if $id and $self->{deleted}{ $id };
-        if( $op eq 'SID' ) {
-            ok( !$self->{SID}, "New SID $id" );
-            $self->{SID} = $id;
-        }
-        elsif( $op eq 'boot' ) {
-            ok( !$self->{boot}, "Boot message '$id'" );
-            $self->{boot} = $id;
-        }
-        elsif( $op eq 'textnode' ) {
-            ok( defined( $args[1] ), "Got a textnode $id" );
-            ok( $self->{NODES}->{$id}, " ... and we have its parent ($id)" );
-            my $parent = $self->{NODES}->{$id}{zC};
-            ok( ( $args[0] <= @{$parent} ), " ... and this isn't way out there" );
-            my $tn = $parent->[ $args[0] ];
-            if( $tn and $tn->{tag} eq 'textnode' ) {
-                $tn->{nodeValue} = $args[1];
-            }
-            else {
-                $parent->[ $args[0] ] =
-                    { tag=>'textnode', nodeValue=>$args[1] };
-            }
-        }
-        elsif( $op eq 'cdata' ) {
-            ok( defined( $args[1] ), "Got a cdata $id" );
-            ok( $self->{NODES}->{$id}, " ... and we have its parent ($id)" );
-            my $parent = $self->{NODES}->{$id}{zC};
-            ok( ( $args[0] <= @{$parent} ), " ... and this isn't way out there" );
-            my $tn = $parent->[ $args[0] ];
-            if( $tn and $tn->{tag} eq 'cdata' ) {
-                $tn->{nodeValue} = $args[1];
-            }
-            else {
-                $parent->[ $args[0] ] =
-                    { tag=>'cdata', cdata=>$args[1] };
-            }
-        }
-        elsif( $op eq 'new' ) {
-            ok( ! $self->{NODES}->{$id}, "New node $id" );
-            ok( $args[0], " ... with a tag type" );
-            my $new = $self->{NODES}->{$id} = 
-                        { tag => $args[0], id=>$id, zC=>[] };
-            if( $args[1] ) {
-                my $parent = $self->{NODES}->{$args[1]};
-                ok( $parent, " ... and we have its parent ($args[0] wants $args[1])" );
-
-                my $old = $parent->{zC}[ $args[2] ];
-                if( $old ) {
-                    delete $self->{NODES}->{ $old->{id} };
-                }
-
-                $parent->{zC}[ $args[2] ] = $new
-            }
-            if( ($new->{tag}||'') eq 'window' ) {
-                ok( !$self->{W}, "New window" );
-                $self->{W} = $new;
-            }
-        }
-        elsif( $op eq 'set' ) {
-            ok( 2==@args, "Going to set attribute $args[0]" );
-            my $m = 'an existing node'; 
-            $m = $args[1] if $args[0] eq 'id';
-            ok( $self->{NODES}->{$id}, " ... on $m" )
-                    or die "Where is $id in ", join ', ', sort keys %{ $self->{NODES} }, 
-                                    Dumper $I;
-
-            isnt( $self->{NODES}->{$id}{tag}, 'textnode', 
-                            "One can't reference a text node!" );
-
-            if( $args[0] eq 'id' ) {
-                my $N = delete $self->{NODES}->{$id};
-                DEBUG and diag( "$N->{id} -> $args[1]" );
-                $N->{id} = $args[1];
-                $self->{NODES}->{ $N->{id} } = $N;
-            }
-            else {
-                $self->{NODES}->{$id}{$args[0]} = $args[1];
-            }
-        }
-        elsif( $op eq 'remove' ) {
-            ok( 1==@args, "Going to remove attribute $args[0]" );
-            ok( $self->{NODES}->{$id}, " ... on an existing node" )
-                    or die "Where is $id in ", join ', ', sort keys %{ $self->{NODES} }, 
-                                    Dumper $I;
-
-            delete $self->{NODES}->{$id}{$args[0]};
-        }
-        elsif( $op eq 'bye' ) {
-            next unless $self->{NODES}->{$id};
-
-            ok( 0==@args, "Going to delete element $id" );
-            ok( $self->{NODES}->{$id}, " ... we know that node" );
-            isnt( $self->{NODES}->{$id}{tag}, 'textnode', 
-                            " ... can't reference a text node" );
-            my $old = delete $self->{NODES}->{$id};
-
-            my( $parent, $index ) = $self->find_parent( $old );
-
-            if( $parent and defined $index ) {
-                ok( $parent, " ... and we know the parent" );
-                ok( defined $index, " ... we know the offset" );
-                my $node = splice @{ $parent->{zC} }, $index, 1;
-                is( $old, $node, " ... it's right node" );
-            }
-            else {
-                pass( " ... parent is already bye-bye" );
-            }
-            $self->drop_node( $old );
-        }
-        elsif( $op eq 'bye-textnode' ) {
-            ok( 1==@args, "Going to delete textnode $args[0] from $id" );
-            if( $self->{NODES}->{$id} ) {
-                ok( $self->{NODES}->{$id}, " ... we know of the node" );
-                ok( ( $args[0] < @{ $self->{NODES}->{$id}{zC} } ), " ... in range" );
-                my $node = splice @{ $self->{NODES}->{$id}{zC} }, $args[0], 1;
-                is( $node->{tag}, 'textnode', " ... it's a textnode" );
-            }
-            else {
-                pass( " ... already bye-bye" );
-            }
-        }
-        elsif( $op eq 'framify' ) {
-            ok( 0==@args, "Going to framify element $id" );
-            ok( $self->{NODES}->{$id}, " ... we know of the node" );
-            isnt( $self->{NODES}->{$id}{tag}, 'textnode', 
-                            " ... can't framify a text node" );
-            my $old = delete $self->{NODES}->{$id};
-
-            my( $parent, $index ) = $self->find_parent( $old );
-
-            ok( $parent, " ... and we know the parent of $old->{id}" )
-                    or die "We need to know the parent!";
-            ok( ( $index < @{ $parent->{zC} } ), " ... in range" );
-
-            my $new = {
-                        tag => 'iframe',
-                        id  => "IFRAME-$old->{id}",
-                        src => { type      => 'XUL-from', 
-                                 source_id => $old->{id}
-                               }
-                    };
-            ok( !$self->{NODES}->{$new->{id}}, " ... never been framified" );
-            $self->{NODES}->{$new->{id}} = $new;
-
-            my $node = splice @{ $parent->{zC} }, $index, 1, $new;
-            is( $old, $node, " ... it's right node" );
-            $self->drop_node( $node );
-        }
-        elsif( $op eq 'popup_window' ) {
-            $self->popup_window( $id, @args );
-        }
-        elsif( $op eq 'close_window' ) {
-            $self->close_window( $id, @args );
-        }
-        elsif( $op eq 'timeslice' ) {
-            # ignore it
+        if( $for eq $self->{name} ) {
+            $self->handle_one( @$I );
         }
         else {
-             die "What do i do with op=$op";
+            push @{ $accume{$for} }, $I;
         }
+    }
+
+    if( %accume ) {
+        # warn "accume=", Dumper \%accume;
+        if( $self->{parent} ) {
+            $self->{parent}->for_window( \%accume, $phase );
+        }
+        else {
+            $self->for_window( \%accume, $phase );
+        }
+    }
+    my $close = delete $self->{close_window};
+    return unless $close and @$close;
+    foreach my $id ( @$close ) {
+        $self->close_window( $id );
+    }
+}
+
+######################################################
+sub for_window
+{
+    my( $self, $accume, $phase ) = @_;
+    Carp::carp "Must be parent" if $self->{parent} or $self->{name};
+
+    foreach my $id ( keys %$accume ) {
+        my $win = $self->{windows}{ $id };
+        $win = $win->{browser} if $win;
+        my $name = $id;
+        if( $id eq '' ) {
+            $win = $self;
+            $name = 'main window';
+        }
+    
+        ok( $win, "Instructions for |$name|" ) or die "PAIN FOLLOWS";
+        $win->handle_resp( $accume->{ $id }, $phase );
+    }
+}
+
+######################################################
+sub handle_one
+{
+    my( $self, $op, $id, @args ) = @_;
+    return unless $op;
+    if( $op eq 'ERROR' ) {
+        die $args[0];
+    }
+
+    next if $id and $self->{deleted}{ $id };
+    if( $op eq 'SID' ) {
+        ok( !$self->{SID}, "New SID $id" );
+        $self->{SID} = $id;
+    }
+    elsif( $op eq 'boot' ) {
+        ok( !$self->{boot}, "Boot message '$id'" );
+        $self->{boot} = $id;
+    }
+    elsif( $op eq 'textnode' ) {
+        ok( defined( $args[1] ), "Got a $id.textnode" );
+        ok( $self->{NODES}->{$id}, " ... and we have its parent ($id)" )
+                or die "$self->NODES=", 
+                           sort keys %{ $self->{NODES} };
+        my $parent = $self->{NODES}->{$id}{zC};
+        ok( ( $args[0] <= @{$parent} ), " ... and this isn't way out there" );
+        my $tn = $parent->[ $args[0] ];
+        if( $tn and $tn->{tag} eq 'textnode' ) {
+            $tn->{nodeValue} = $args[1];
+        }
+        else {
+            $parent->[ $args[0] ] =
+                { tag=>'textnode', nodeValue=>$args[1] };
+        }
+    }
+    elsif( $op eq 'cdata' ) {
+        ok( defined( $args[1] ), "Got a cdata $id" );
+        ok( $self->{NODES}->{$id}, " ... and we have its parent ($id)" );
+        my $parent = $self->{NODES}->{$id}{zC};
+        ok( ( $args[0] <= @{$parent} ), " ... and this isn't way out there" );
+        my $tn = $parent->[ $args[0] ];
+        if( $tn and $tn->{tag} eq 'cdata' ) {
+            $tn->{nodeValue} = $args[1];
+        }
+        else {
+            $parent->[ $args[0] ] =
+                { tag=>'cdata', cdata=>$args[1] };
+        }
+    }
+    elsif( $op eq 'new' ) {
+        ok( ! $self->{NODES}->{$id}, "New node $id" );
+        ok( $args[0], " ... with a tag type" );
+        my $new = $self->{NODES}->{$id} = 
+                    { tag => $args[0], id=>$id, zC=>[] };
+        if( $args[1] ) {
+            my $parent = $self->{NODES}->{$args[1]};
+            ok( $parent, " ... and we have its parent ($args[0] wants $args[1])" );
+
+            my $old = $parent->{zC}[ $args[2] ];
+            if( $old ) {
+                delete $self->{NODES}->{ $old->{id} };
+            }
+
+            $parent->{zC}[ $args[2] ] = $new
+        }
+        if( ($new->{tag}||'') eq 'window' ) {
+            ok( !$self->{W}, "New window" );
+            $self->{W} = $new;
+        }
+    }
+    elsif( $op eq 'set' ) {
+        ok( 2==@args, "Going to set attribute $args[0]" );
+        my $m = 'an existing node'; 
+        $m = $args[1] if $args[0] eq 'id';
+        ok( $self->{NODES}->{$id}, " ... on $m" )
+                or die "Where is $id in ", join ', ', sort keys %{ $self->{NODES} }, 
+                                Dumper [ $op, $id, @args ];
+
+        isnt( $self->{NODES}->{$id}{tag}, 'textnode', 
+                        "One can't reference a text node!" );
+
+        if( $args[0] eq 'id' ) {
+            my $N = delete $self->{NODES}->{$id};
+            DEBUG and diag( "$N->{id} -> $args[1]" );
+            $N->{id} = $args[1];
+            $self->{NODES}->{ $N->{id} } = $N;
+        }
+        else {
+            $self->{NODES}->{$id}{$args[0]} = $args[1];
+        }
+    }
+    elsif( $op eq 'remove' ) {
+        ok( 1==@args, "Going to remove attribute $args[0]" );
+        ok( $self->{NODES}->{$id}, " ... on an existing node" )
+                or die "Where is $id in ", join ', ', sort keys %{ $self->{NODES} }, 
+                                Dumper [ $op, $id, @args ];
+
+        delete $self->{NODES}->{$id}{$args[0]};
+    }
+    elsif( $op eq 'bye' ) {
+        next unless $self->{NODES}->{$id};
+
+        ok( 0==@args, "Going to delete element $id" );
+        ok( $self->{NODES}->{$id}, " ... we know that node" );
+        isnt( $self->{NODES}->{$id}{tag}, 'textnode', 
+                        " ... can't reference a text node" );
+        my $old = delete $self->{NODES}->{$id};
+
+        my( $parent, $index ) = $self->find_parent( $old );
+
+        if( $parent and defined $index ) {
+            ok( $parent, " ... and we know the parent" );
+            ok( defined $index, " ... we know the offset" );
+            my $node = splice @{ $parent->{zC} }, $index, 1;
+            is( $old, $node, " ... it's right node" );
+        }
+        else {
+            pass( " ... parent is already bye-bye" );
+        }
+        $self->drop_node( $old );
+    }
+    elsif( $op eq 'bye-textnode' ) {
+        ok( 1==@args, "Going to delete textnode $args[0] from $id" );
+        if( $self->{NODES}->{$id} ) {
+            ok( $self->{NODES}->{$id}, " ... we know of the node" );
+            ok( ( $args[0] < @{ $self->{NODES}->{$id}{zC} } ), " ... in range" );
+            my $node = splice @{ $self->{NODES}->{$id}{zC} }, $args[0], 1;
+            is( $node->{tag}, 'textnode', " ... it's a textnode" );
+        }
+        else {
+            pass( " ... already bye-bye" );
+        }
+    }
+    elsif( $op eq 'framify' ) {
+        ok( 0==@args, "Going to framify element $id" );
+        ok( $self->{NODES}->{$id}, " ... we know of the node" );
+        isnt( $self->{NODES}->{$id}{tag}, 'textnode', 
+                        " ... can't framify a text node" );
+        my $old = delete $self->{NODES}->{$id};
+
+        my( $parent, $index ) = $self->find_parent( $old );
+
+        ok( $parent, " ... and we know the parent of $old->{id}" )
+                or die "We need to know the parent!";
+        ok( ( $index < @{ $parent->{zC} } ), " ... in range" );
+
+        my $new = {
+                    tag => 'iframe',
+                    id  => "IFRAME-$old->{id}",
+                    src => { type      => 'XUL-from', 
+                             source_id => $old->{id}
+                           }
+                };
+        ok( !$self->{NODES}->{$new->{id}}, " ... never been framified" );
+        $self->{NODES}->{$new->{id}} = $new;
+
+        my $node = splice @{ $parent->{zC} }, $index, 1, $new;
+        is( $old, $node, " ... it's right node" );
+        $self->drop_node( $node );
+    }
+    elsif( $op eq 'timeslice' ) {
+        # ignore
+    }
+    elsif( $op eq 'popup_window' ) {
+        $self->popup_window( $id, @args );
+    }
+    elsif( $op eq 'close_window' ) {
+        push @{ $self->{close_window} }, $id;
+    }
+    elsif( $op eq 'timeslice' ) {
+        # ignore it
+    }
+    else {
+         die "What do i do with op=$op";
     }
 }
 
@@ -342,6 +409,13 @@ sub base_uri
 }
 
 ######################################################
+sub default_args
+{
+    my( $self ) = @_;
+    return ( version=>1, window=>$self->{name}, reqN=> $self->{R}++ );
+}
+
+######################################################
 sub boot_uri
 {
     my( $self ) = @_;
@@ -354,7 +428,7 @@ sub boot_uri
 sub boot_args
 {
     my( $self, $button ) = @_;
-    return { app=> $self->{APP} };
+    return { $self->default_args, app=> $self->{APP} };
 }
 
 ######################################################
@@ -362,14 +436,21 @@ sub Click
 {
     my( $self, $button ) = @_;
 
-    $button = $self->find_ID( $button ) unless ref $button;
-    ok( $button, "Found button" )
-            or die "I really need that button";
+    unless( ref $button ) {
+        diag( "Clicking $button" );
+        $button = $self->find_ID( $button );
+        ok( $button, "Found button" )
+            or Carp::croak "I really need that button in ", 
+                                ($self->{name}||"the main window");
+    }
+    else {
+        diag( "Clicking $button->{id}" );
+    }
 
     my $URI = $self->Click_uri( $button );
     my $resp = $self->{UA}->get( $URI );
     my $data = $self->decode_resp( $resp, "Click $button->{id}" );
-    die Dumper $data if $data->[0][0] eq 'ERROR';
+    die $data->[0][2] if $data->[0][0] eq 'ERROR';
     $self->handle_resp( $data, "Click $button->{id}" );
 }
 
@@ -377,7 +458,7 @@ sub Click
 sub Click_uri
 {
     my( $self, $button ) = @_;
-    ok( $button->{id}, "Clicking on $button->{id}" );
+    ok( $button->{id}, "Clicking on [ $button->{id} ]" );
     my $URI = $self->base_uri;
     $URI->query_form( $self->Click_args( $button ) );
     return $URI;
@@ -387,7 +468,8 @@ sub Click_uri
 sub Click_args
 {
     my( $self, $button ) = @_;
-    return {    app => $self->{APP}, 
+    return {    $self->default_args, 
+                app => $self->{APP}, 
                 SID => $self->{SID}, 
                 event => 'Click', 
                 source_id => $button->{id}
@@ -424,7 +506,8 @@ sub Change_uri
 sub Change_args
 {
     my( $self, $textbox ) = @_;
-    return {    app => $self->{APP}, 
+    return {    $self->default_args, 
+                app => $self->{APP}, 
                 SID => $self->{SID}, 
                 event => 'Change', 
                 source_id => $textbox->{id},
@@ -436,7 +519,8 @@ sub Change_args
 sub Select_args
 {
     my( $self, $textbox ) = @_;
-    return {    app => $self->{APP}, 
+    return {    $self->default_args, 
+                app => $self->{APP}, 
                 SID => $self->{SID}, 
                 event => 'Select', 
                 source_id => $textbox->{id},
@@ -463,7 +547,8 @@ sub RadioClick_args
     }
 
 
-    return {    app => $self->{APP}, 
+    return {    $self->default_args, 
+                app => $self->{APP}, 
                 SID => $self->{SID}, 
                 event => 'RadioClick', 
                 source_id => $RG->{id},
@@ -494,10 +579,11 @@ sub Connect_uri
 sub Connect_args
 {
     my( $self ) = @_;
-    return { app => $self->{APP}, 
-             SID => $self->{SID},
-             event  => 'connect',
-             window => $self->{name}
+    return {    $self->default_args, 
+                app => $self->{APP}, 
+                SID => $self->{SID},
+                event  => 'connect',
+                window => $self->{name}
            };
 }
 
@@ -505,12 +591,12 @@ sub Connect_args
 sub Disconnect
 {
     my( $self, $win ) = @_;
+    die "Must be parent" if $self->{parent} or $self->{name};
     my $URI = $self->Disconnect_uri( $win );
     my $resp = $self->{UA}->get( $URI );
-    my $data = $self->decode_resp( $resp, "Disconnect $win->{id}" );
-#    is( 0+@$data, 0, "No response to Disconnect" );
-#    return;
-    $self->handle_resp( $data, "Disconnect $win->{id}" );    
+    my $data = $self->decode_resp( $resp, "Disconnect $win->{name}" );
+    # warn "Disconnect name=$self->{name} data=", Dumper $data;
+    $self->handle_resp( $data, "Disconnect $win->{name}" );    
 }
 
 sub Disconnect_uri
@@ -525,26 +611,22 @@ sub Disconnect_uri
 sub Disconnect_args
 {
     my( $self, $win ) = @_;
-    return { app => $self->{APP}, 
-             SID => $self->{SID},
-             event  => 'disconnect',
-             window => $win->{id},
-#             value  => $win->{id}
+    return {    $self->default_args, 
+                app => $self->{APP}, 
+                SID => $self->{SID},
+                event  => 'disconnect',
+                window => $win->{name},
            };
 }
 
-
-
 ######################################################
-sub XULFrom_args
+sub Close
 {
-    my( $self, $ID ) = @_;
-    return {    app => $self->{APP}, 
-                SID => $self->{SID}, 
-                event => 'XUL-from', 
-                source_id => $ID
-            };
+    my( $self ) = @_;
+    croak "Not allowed to close the main window!" unless $self->{parent};
+    $self->close_window( $self->{name} );
 }
+
 
 ######################################################
 sub SearchList_args
@@ -554,7 +636,8 @@ sub SearchList_args
     ok( $SL, "Going to search a search-list" );
     ok( $string, " ... for '$string'" );
 
-    return {    app => $self->{APP}, 
+    return {    $self->default_args, 
+                app => $self->{APP}, 
                 SID => $self->{SID}, 
                 event => 'SearchList', 
                 source_id => $SL->{id},
@@ -637,16 +720,21 @@ sub popup_window
 ############################################################
 sub close_window
 {
-    my( $self, $id, @args ) = @_;
+    my( $self, $id ) = @_;
     if( $self->{parent} ) {
-        return $self->{parent}->close_window( $id, @args );
+        return $self->{parent}->close_window( $id );
     }
 
     my $win = delete $self->{windows}{$id};
     ok( $win, "Close window $id" )
-            or die "Pain follows";
+            or die "Closing a closed window??!";
 
+
+    $win = $win->{browser};
+    $win->{closed} = 1;
+    $win->{NODES} = {};
     $self->Disconnect( $win );
+    delete $win->{parent};
 }
 
 ############################################################

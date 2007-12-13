@@ -1,5 +1,6 @@
-package POE::Component::XUL;
-# $Id: XUL.pm 654 2007-12-07 14:28:39Z fil $
+package 
+    POE::Component::XUL;
+# $Id: XUL.pm 666 2007-12-12 23:52:44Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 
 use strict;
@@ -71,7 +72,7 @@ sub new
 
 	$args->{port} = $args->{port};
     $args->{port} = 8077 unless defined $args->{port};      # PORT
-	$args->{root} = $args->{root} || '/usr/local/poe-xul/xul'; # ROOT
+	$args->{root} = $args->{root} || '/home/fil/work/IGDAIP/httpd-session/poe-xul'; # ROOT
     $args->{alias} ||= 'component-poe-xul';
 	$args->{apps} = {} if (!defined $args->{apps});
 	$args->{opts} = {} if (!defined $args->{opts});
@@ -133,30 +134,39 @@ sub build_http_server
         Port => $self->{port},
         MapOrder => 'bottom-first',
         # PreHandler => { '/' => [sub {$self->pre_connection(@_)}] },
-        PostHandler => { '/' => [sub {$self->post_connection(@_)}] },
+        PostHandler => { 
+#                '/xul'  => _mk_handler( ),
+                '/'     => _mk_handler( ref($self), 'post_connection' ) 
+            },
         ContentHandler => {
-                '/xul' => sub { 
-                        return $poe_kernel->call( $alias, 'xul', @_ );
-                    },
-                '/__poe_size' => sub { 
-                        return $poe_kernel->call( $alias, 'poe_size', @_ );
-                    },
-                '/__poe_kernel' => sub { 
-                        return $poe_kernel->call( $alias, 'poe_kernel', @_ );
-                    },
-                '/'    => sub { 
-                        return $poe_kernel->call( $alias, 'static', @_ );
-                    },
-        },
+                '/xul'          => _mk_call( $alias, 'xul' ),
+                '/__poe_size'   => _mk_call( $alias, 'poe_size' ),
+                '/__poe_kernel' => _mk_call( $alias, 'poe_kernel' ),
+                '/'             => _mk_call( $alias, 'static' ),
+            },
         ErrorHandler => {
-                '/' => sub { 
-                        return $poe_kernel->call( $alias, 'httpd_error', @_ );
-                    },
-        },
+                '/'             => _mk_call( $alias, 'httpd_error' ),
+            },
 
         Headers => { 'X-POE-XUL' => $VERSION },
     );
 }
+
+## We build these closures outside of build_http_server, because otherwise
+## they would capture a reference to $self
+sub _mk_handler
+{
+    my( $package, $call ) = @_;
+    return [ sub { RC_OK } ] unless $package;
+    return [ sub { $package->$call(@_) } ] 
+}
+
+sub _mk_call
+{
+    my( $alias, $handler ) = @_;
+    return sub { return $poe_kernel->call( $alias, $handler, @_ ) };
+}
+
 
 ###############################################################
 # Introspection used for load balancer
@@ -330,34 +340,27 @@ sub xul
             my $fail = $controler->boot( $req, $resp );
             if( $fail ) {
                 # boot failed
-                $self->error_boot_fail( $fail );
-                $rc = RC_OK;
-            }
-            else {
-                $rc = RC_WAIT;
+                $rc = $self->error_boot_fail( $fail );
             }
 		}
 		elsif( ! $controler->exists( $SID ) ) {
-			$self->error_unknown_session( $SID );
-			$rc = RC_OK;
+			$rc = $self->error_unknown_session( $SID );
         }
         elsif( $event eq 'connect' ) {
             $controler->connect( $SID, $req, $resp );
-			$rc = RC_WAIT;
         }
         elsif( $event eq 'disconnect' ) {
             $controler->disconnect( $SID, $req, $resp );
-			$rc = RC_WAIT;
+        }
+        elsif( $event eq 'close' ) {
+            $controler->close( $SID, $req, $resp );
         }
         else {
-            # Next 2 lines were a failed attempt at sending XUL fragments.  
-            my $fullfile = $self->uri_to_file( 'fragment.xul' );
-            $req->header( 'Fragment-XUL' => $fullfile );
-
+            # everything else is a DOM event
 			$controler->keepalive( $SID );
 			$controler->request( $SID, $event, $req, $resp );
-			$rc = RC_WAIT;
 		}
+        $rc ||= RC_WAIT;
 	};
 
     unless( defined $rc ) {
@@ -790,12 +793,13 @@ sub sig_HUP
 ############################################################
 sub post_connection
 {
-    my( $self, $req, $resp ) = @_;
+    my( $package, $req, $resp ) = @_;
 
     my $conn = $req->connection;
     my @log;
     push @log, ($conn ? $conn->remote_ip : '0.0.0.0');
-    push @log, ($self->{preforked} ? $$ : '-');
+    # push @log, ($self->{preforked} ? $$ : '-');
+    push @log, $$;
     push @log, "[". POSIX::strftime("%d/%m/%Y:%H:%M:%S %z", localtime)."]",
                join ' ', $req->method, $req->uri;
     $log[-1] = qq("$log[-1]");
@@ -804,7 +808,8 @@ sub post_connection
     xlog( { message => join( ' ', @log )."\n",
             type    => 'REQ'
         } );
-
+#    use Devel::Cycle;
+#    find_cycle( $poe_kernel );
     return RC_OK;
 }
 

@@ -1,5 +1,5 @@
 package POE::XUL::Event;
-# $Id: Event.pm 654 2007-12-07 14:28:39Z fil $
+# $Id: Event.pm 666 2007-12-12 23:52:44Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
@@ -7,7 +7,6 @@ use strict;
 use warnings;
 
 use Carp;
-use POE;
 use POE::XUL::Logging; 
 
 use constant DEBUG => 0;
@@ -20,13 +19,15 @@ sub new
     croak "Why didn't you give me a ChangeManager" unless $CM;
     croak "Why didn't you give me a HTTP::Response" unless $resp;
 
-    $CM->request_start();
-
     my $self = bless {
             event_type => $event_type,
             CM         => $CM,
             resp       => $resp
         }, $package;
+
+    $CM->request_start( $self );
+
+    DEBUG and xwarn "$self.CM=$self->{CM}";
 
     return $self;
 }
@@ -37,7 +38,9 @@ sub __init
     my( $self, $req ) = @_;
 
     if( $self->{event_type} ne 'connect' and 
-                $self->{event_type} ne 'disconnect' ) {
+                $self->{event_type} ne 'disconnect' and
+                $self->{event_type} ne 'boot' ) {
+
         my $source_id = $req->param( 'source_id' );
         my $rc = $self->__source_id( $source_id );
         die $rc if $rc;
@@ -45,10 +48,14 @@ sub __init
     foreach my $f ( $req->params ) {
         next if $f eq 'source_id';
         $self->set( $f => $req->param( $f ) );
+        # warn "$f=", $self->get( $f );
     }
 
-    foreach my $f ( qw( Fragment-XUL ) ) {
-        $self->set( $f => $req->header( $f ) );
+    if( $self->{event_type} ne 'connect' and 
+                $self->{event_type} ne 'boot' ) {
+        my $winID = $req->param( 'window' );
+        my $rc = $self->__window_id( $winID );
+        die $rc if $rc;
     }
 }
 
@@ -62,6 +69,26 @@ sub __source_id
     return "Can't find source node $id" unless $node;
     $self->{source} = $node;
     $self->{source_id} = $id;
+    return;
+}
+
+##############################################################
+sub __window_id
+{
+    my( $self, $id ) = @_;
+
+    my $node;
+    if( $id ) {
+        $node = $self->{CM}->getElementById( $id );
+        DEBUG and xwarn "winID=$id node=$node";
+        return "Can't find window node $id" unless $node;
+    }
+    elsif( $self->{CM} ) {
+        $node = $self->{CM}->window;
+    }
+    $id ||= '';
+    $self->{window} = $node;
+    $self->{window_id} = $id;
     return;
 }
 
@@ -112,17 +139,19 @@ sub run
     if( $CMm ) {
         DEBUG and xdebug "$method = $CMm";
         $self->wrap( sub { $CMm->( $self->{CM}, $self ) } ) ;
-        return if $self->{responded};
+        return if $self->{CM}{responded};
     }
 
     # Call code that our builder thinks we should execute
     if( $self->{coderef} ) {
-        DEBUG and xdebug "coderef";
-        $self->wrap( $self->{coderef} );
+        DEBUG and 
+            xdebug "coderef";
+        $self->wrap( delete $self->{coderef} );
     }
     # Call code that the application thinks we should execute
     else {
-        DEBUG and xdebug "do_event";
+        DEBUG and 
+            xdebug "do_event";
         $self->do_event();
     }
 }
@@ -148,7 +177,10 @@ sub do_event
                 }
                 else {
                     DEBUG and xdebug "Posting to $self->{SID}/$listener";
-                    $poe_kernel->call( $self->{SID}, $listener, $self );
+                    $POE::Kernel::poe_kernel->call( $self->{SID}, 
+                                                    $listener, 
+                                                    $self 
+                                                  );
                 }
             } );
         last;
@@ -157,7 +189,7 @@ sub do_event
 
 
 ##############################################################
-sub finish
+sub handled
 {
     my( $self ) = @_;
 
@@ -165,6 +197,14 @@ sub finish
     DEBUG and xcarp "Event finished";
 
     $self->flush();
+}
+*finish = \&handled;
+
+##############################################################
+sub defer
+{
+    my( $self ) = @_;
+    $self->done( 0 );
 }
 
 ##############################################################
@@ -176,15 +216,12 @@ sub wrap
         local $SIG{__DIE__} = 'DEFAULT';
         DEBUG and 
             xcarp "Wrapping user code";
-        local $POE::XUL::Node::CM;
-        $POE::XUL::Node::CM = $self->{CM};
+        local $POE::XUL::Node::CM = $self->{CM};
         $coderef->( $self );
     };
 
     if( $@ ) {
         my $err = "APPLICATION ERROR: $@";
-        # DEBUG and 
-            xdebug $err;
         $self->wrapped_error( $err );
         return;
     }
@@ -202,11 +239,14 @@ sub flush
 {
     my( $self ) = @_;
 
-    if( $self->{is_flushed} ) {
+    if( $self->{is_flushed} or not $self->{CM} ) {
         Carp::confess "This event was already flushed!";
+#        $self->dispose if $self->{CM}; # TODO is this a good idea?
         return;
     }
-    $self->{CM}->response( $self->{resp} );
+    DEBUG and xdebug "$self->dispose";
+    delete $self->{CM}{current_event};      # TODO CM->request_done does this
+    $self->{CM}->response( $self->{resp} ); # TODO don't do this in case of error
     $self->{is_flushed} = 1;
 }
 
@@ -214,7 +254,19 @@ sub flush
 sub wrapped_error
 {
     my( $self, $err ) = @_;
+    DEBUG and xdebug "wrapped_error via $self->{CM} ($err)";
     $self->{CM}->error_response( $self->{resp}, $err );
+}
+
+
+##############################################################
+sub dispose
+{
+    my( $self ) = @_;
+    $self->{is_flushed} = 1;
+    delete $self->{CM};
+    delete $self->{resp};    
+    DEBUG and xdebug "$self->dispose";
 }
 
 1;
@@ -227,10 +279,11 @@ POE::XUL::Event - A DOM event
 
 =head1 SYNOPSIS
 
+    # POEish
     sub xul_Handler {
-        my( $self, $event ) = @_[ OBJECT, EVENT ];
+        my( $self, $event ) = @_[ OBJECT, ARG0 ];
         warn "Event ", $event->name, " on ", $event->target->id;
-        $event->done( 0 );
+        $event->defer;
         $poe_kernel->yield( other_event => $event );
     }
 
@@ -238,7 +291,7 @@ POE::XUL::Event - A DOM event
         my( $self, $event ) = @_[ OBJECT, EVENT ];
         $event->wrap( sub {
                 # ... do work
-                $event->finish;
+                $event->handled;
             } );
     }
 
@@ -287,6 +340,18 @@ C<Click> this is the a C<Button>, for C<Change>, a C<TextBox>, for
 C<Select>, the node you attached the event (either C<RadioGroup>, C<Radio>
 C<MenuList> or C<MenuItem>).
 
+=head2 window
+
+Returns the Window node that generated a request.  While
+POE::XUL::Aplication's window() always points to the main window, 
+C<$event->window()> may point to a sub-window, if the event orginated there.
+
+=head2 defer
+
+    $event->defer;
+
+Defer the event until L</handled> is called.
+
 =head2 done
 
     $event->done( $state );
@@ -296,13 +361,15 @@ Mark the current event as completed.  Or not.  Initially, an event is marked
 as completed.  If you wish to defer the event to another POE state, you may
 set done to 0, and then call L</finish> later.
 
-=head2 finish
+C<$event->done(0)> is better written as C<$event->defer>.
 
-    $event->finish;
+=head2 handled
+
+    $event->handled;
 
 Mark the current event as completed, and flush any changes from the
-ChangeManager to the browser.  You only have to call this if you set
-L</done> to 0 perviously.
+ChangeManager to the browser.  You only have to call this if you 
+called L</defer> previously.
 
 =head2 wrap
 
@@ -315,6 +382,8 @@ modified L<POE::XUL::Node> are seen by it.
 
 Second, if the coderef dies, the error message is displayed in the browser.
 
+POE::XUL::Application handlers are already wrapped.
+
 =head2 flushed
 
     die "Too late!" if $event->flushed;
@@ -324,6 +393,10 @@ Because L<POE::XUL> uses a synchronous-event-based model, an event may only
 be flushed once.  This, however, should change later at some point.
 
 =head1 DOM EVENTS
+
+The following events are generated in response to user interaction. 
+The application will attach event listeners to nodes.  See
+L<POE::XUL::Node/attach>.
 
 =head2 Click
 
@@ -371,6 +444,95 @@ C<selected> is set as a side-effect by the ChangeManager.
 
 Called when the users selects a colour in a Colorpicker, Datepicker or other
 nodes.  TODO better doco.
+
+
+=head1 APPLICATION EVENTS
+
+The following events are generated during the life time of the application and
+do not have an equivalent in the DOM.
+
+Non-POE::XUL::Application events are not automatically handled;
+event listeners must call C<$event->handled> when completed.
+
+=head2 boot
+
+    sub boot {
+        my( $self, $event ) = @_[ OBJECT, ARG0 ];
+        Window( ... );
+        $event->handled;
+    }
+
+Called when an application instance is first started.  There is no node
+to attach a listener to, however, so this event is posted directly to the
+application's session.
+
+A boot event does not have a L</target> node nor a source C</window>.
+
+The application's boot handler is expected to create a Window node.
+
+=head2 close
+
+Called when an application closes, that is when the main window closes.
+
+NOT CURRENTLY IMPLEMENTED.  See L<POE::XUL/timeout> and shutdown.
+
+=head2 connect
+
+Called when the browser opens a sub-window.  Sub-windows are created
+with L<"window->open()"|POE::XUL::Window/open>.
+
+POE::XUL::Application's will have a window opened and available via
+C<$event->window>.  
+
+    sub connect {
+        my( $self, $event ) = @_;
+
+        # add elements to the sub-window
+        $event->window->appendChild( Description( "Hello world!" ) );
+
+        # updated the main window also
+        window->getElementById( 'message' )->textNode( 'Sub-window opened' );
+    }
+
+Other applications  will need to create the
+L<POE::XUL::Window> themselves.  C<$event->window> will be the window ID
+as passed to C<"window->open()">.
+
+    sub connect {
+        my( $self, $event ) = @_[ OBJECT, ARG0 ];
+        my $winID = $event->window;
+        # create and popuplate the sub-window
+        my $win = POE::XUL::Window( id=>$win, 
+                                    Description( "Hello world!" ) 
+                                  );
+        $event->handled;
+    }
+
+=head2 disconnect
+
+Called when the users closes a sub-window.
+
+C<$event->window> is the sub-window node.
+
+POE::XUL::Application's will have the sub-window node closed when disconnect
+returns.
+
+    sub disconnect {
+        my( $self, $event ) = @_;
+        my $winID = $event->window->id;
+        window->getElementById( 'message' )
+                    ->textNode( "Closed window $winID" );
+    }
+
+Other applications must get rid of the sub-window explicitly.
+
+    sub disconnect {
+        my( $self, $event ) = @_[ OBJECT, ARG0 ];
+        $event->window->destroy;
+        $event->window( undef() );
+        $event->handled;
+    }
+
 
 =head1 AUTHOR
 
