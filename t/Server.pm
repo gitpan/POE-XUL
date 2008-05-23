@@ -2,6 +2,7 @@ package t::Server;
 
 use strict;
 use Config;
+use POE;
 
 our $perl;
 
@@ -22,6 +23,8 @@ sub spawn
     return $pid if $pid;
     $root ||= 'poe-xul';
     $prog ||= 't/test-app.pl';
+    warn "POE is in $INC{'POE.pm'}";
+    warn "perl=$perl";
     my $inc = join ' ', map { "-I$_" } qw( blib/lib
                                            ../widgets/blib/lib
                                            ../httpd/blib/lib

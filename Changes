@@ -1,5 +1,8 @@
 Revision history for Perl extension POE::XUL.
 
+0.0402 May 23 2008
+    - Augh!  Stupid tweaks so the CPAN testers don't complain
+
 0.0401 May 23 2008
     - Augh!  MANIFEST wasn't updated.
 
