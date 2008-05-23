@@ -90,19 +90,18 @@ WriteMakefile(
         clean         => {FILES => "$SERVER_SCRIPT"},
 
         PREREQ_PM     => {
-			'Carp'                              => 0,
-			'Digest::MD5'                       => '2.3',
-			'HTTP::Date'                        => '1.4',
-			'HTTP::Status'                      => '1',
-			'JSON::XS'                          => '0.8',
-			'MIME::Types'                       => '1.13',
-			'POE'                               => '0.9500',
-			'POE::Component::Server::HTTP'      => '0.09',
-			'Scalar::Util'                      => '1.13',
-			'Test::More'                        => '0.60',
-            'MIME::Types'                       => 0,
-			'Time::HiRes'                       => 1,
-			'Unicode::String'	            => 2
+            'Carp'                              => 0,
+            'Digest::MD5'                       => '2.3',
+            'HTTP::Date'                        => '1.4',
+            'HTTP::Status'                      => '1',
+            'JSON::XS'                          => '0.8',
+            'MIME::Types'                       => '1.13',
+            'POE'                               => '0.9500',
+            'POE::Component::Server::HTTP'      => '0.09',
+            'Scalar::Util'                      => '1.13',
+            'Test::More'                        => '0.60',
+            'Time::HiRes'                       => 1,
+            'Unicode::String'                   => 2
         },
 );
 

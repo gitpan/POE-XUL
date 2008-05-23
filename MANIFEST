@@ -25,6 +25,7 @@ javascript/src/formatedinput.js
 javascript/src/multikeypress.js
 javascript/src/pseudocombo.js
 javascript/src/select_widget.js
+javascript/src/Blocker.js
 javascript/src/util.js
 javascript/test/functional.html
 javascript/test/test.css
@@ -42,6 +43,7 @@ javascript/test/unit/textarea.html
 javascript/test/unit/util.html
 lib/POE/Component/XUL.pm
 lib/POE/XUL.pm
+lib/POE/XUL/Application.pm
 lib/POE/XUL/CDATA.pm
 lib/POE/XUL/ChangeManager.pm
 lib/POE/XUL/Constants.pm
@@ -53,6 +55,7 @@ lib/POE/XUL/Node.pm
 lib/POE/XUL/Style.pm
 lib/POE/XUL/Request.pm
 lib/POE/XUL/State.pm
+lib/POE/XUL/Session.pm
 lib/POE/XUL/TextNode.pm
 lib/POE/XUL/TWindow.pm
 lib/POE/XUL/Window.pm
