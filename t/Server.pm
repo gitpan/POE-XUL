@@ -22,8 +22,12 @@ sub spawn
     return $pid if $pid;
     $root ||= 'poe-xul';
     $prog ||= 't/test-app.pl';
-#    warn( "# $perl -Iblib/lib -I../widgets/blib/lib -I../httpd/blib/lib -I../PRO5/blib/lib $prog $port $root\n" );
-    exec( "$perl -Iblib/lib -I../widgets/blib/lib -I../httpd/blib/lib -I../PRO5/blib/lib $prog $port $root" ) or die $!;
+    my $inc = join ' ', map { "-I$_" } qw( blib/lib
+                                           ../widgets/blib/lib
+                                           ../httpd/blib/lib
+                                            ../PRO5/blib/lib
+                                          ), @INC;
+    exec( "$perl $inc $prog $port $root" ) or die $!;
 }
 
 1;

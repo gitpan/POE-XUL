@@ -1,5 +1,8 @@
 Revision history for Perl extension POE::XUL.
 
+0.0401 May 23 2008
+    - Augh!  MANIFEST wasn't updated.
+
 0.0400 May 23 2008
     - Added POE::XUL::Style
     - Added names for applications, and [APP-LIST]

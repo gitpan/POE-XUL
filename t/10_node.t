@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 10_node.t 969 2008-05-17 09:23:28Z fil $
+# $Id: 10_node.t 1017 2008-05-23 19:15:06Z fil $
 
 use strict;
 use warnings;
@@ -116,19 +116,23 @@ is( $I->firstChild->label, 'Pearl', " ... and it's Pearl" );
 $lb->hide();
 ok( ($lb->style =~ /display: none/), "Hidden" );
 $lb->hide();
-my @m=($lb->style =~ /display: none/g);
+my $css = $lb->style;
+my @m=($css =~ /display: *none/g);
 is( 0+@m, 1, " ... only once" );
 
 $lb->style( "display:none;" );
 $lb->hide;
-@m=($lb->style =~ /display: *none/g);
+$css = $lb->style;
+@m=($css =~ /display: *none/g);
 is( 0+@m, 1, " ... only once" );
 
 $lb->show;
-@m=($lb->style =~ /display: *none/g);
+$css = $lb->style;
+@m=($css =~ /display: *none/g);
 is( 0+@m, 0, "Shown" );
 
 $lb->style( "display:none;" );
 $lb->show;
-@m=($lb->style =~ /display: *none/g);
+$css = $lb->style;
+@m=($css =~ /display: *none/g);
 is( 0+@m, 0, "Shown" );
