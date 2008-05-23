@@ -1,5 +1,5 @@
 package POE::XUL::Request;
-# $Id: Request.pm 665 2007-12-12 14:10:45Z fil $
+# $Id: Request.pm 1009 2008-05-23 17:03:36Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 
 use strict;
@@ -164,6 +164,7 @@ sub decode_urlencoded
 {
     my( $self, $C, $charset ) = @_;
 
+    return $C unless defined $C;
     my $form;
 
     foreach my $bit ( split /&/, $C ) {

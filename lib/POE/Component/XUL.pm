@@ -1,6 +1,6 @@
 package 
     POE::Component::XUL;
-# $Id: XUL.pm 666 2007-12-12 23:52:44Z fil $
+# $Id: XUL.pm 1009 2008-05-23 17:03:36Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 
 use strict;
@@ -55,9 +55,9 @@ sub spawn
 	POE::Session->create(
         options => { %{ $self->{opts}||{} } },
 		object_states => [
-            $self => [ qw( _start shutdown 
+            $self => [ qw( _start shutdown
                            static xul httpd_error 
-                           poe_size poe_kernel 
+                           poe_size poe_kernel poe_test
                            session_count session_timeout session_exists
                            sig_HUP sig_DIE
                      ) ],
@@ -88,22 +88,7 @@ sub new
     my $self = bless { %$args }, $package;
     $self->build_controler( $self->{timeout}, $self->{apps} );
 
-    my $controler = $self->{controler};
-	foreach my $app ( keys %{ $self->{apps} } ) {
-        my $A = $self->{apps}{$app};
-        my $r = ref $A;
-        # Make sure we have a package or a coderef
-        my $ok = 0;
-        if( not $r and $controler->package_ctor( $A )) {
-            $ok = 1;
-        }
-        elsif( $r eq 'CODE') {
-            $ok = 1;
-        }
-        unless( $ok ) {
-            croak "apps parameter $app must be a code reference or name of a package that defines ->spawn";
-		}
-	}
+    $self->__parse_apps();
     $self->{sessions} = {};
 
     $self->{static_root} ||= File::Spec->catfile( $self->{root}, 'xul' );
@@ -113,6 +98,46 @@ sub new
 
     return $SINGLETON = $self;
 }
+
+sub __parse_apps
+{
+    my( $self ) = @_;
+
+    my $controler = $self->{controler};
+    $self->{app_names} ||= {};
+
+	foreach my $app ( keys %{ $self->{apps} } ) {
+        my $A = $self->{apps}{$app};
+        my $r = ref $A;
+        # Make sure we have a package or a coderef
+        my $ok = 0;
+        if( $r and 'HASH' eq $r ) {
+            $self->{app_names}{$app} = {
+                                    en => $A->{en},
+                                    fr => $A->{fr},
+                                };
+            if( $A->{package} ) {
+                $A = $A->{package};
+                undef $r;
+            }
+            else {
+                $A = $A->{code};
+                $r = 'CODE';
+            }
+        }
+        if( not $r and $controler->package_ctor( $A ) ) {
+            $ok = 1;
+        }
+        elsif( $r eq 'CODE') {
+            $ok = 1;
+        }
+        unless( $ok ) {
+            croak "apps parameter $app must be a code reference or name of a package that defines ->spawn, not $r ($A)";
+		}
+        $self->{apps}{$app} = $A;
+	}
+}
+
 
 ###############################################################
 sub build_controler
@@ -142,6 +167,7 @@ sub build_http_server
                 '/xul'          => _mk_call( $alias, 'xul' ),
                 '/__poe_size'   => _mk_call( $alias, 'poe_size' ),
                 '/__poe_kernel' => _mk_call( $alias, 'poe_kernel' ),
+                '/__poe_text  ' => _mk_call( $alias, 'poe_text' ),
                 '/'             => _mk_call( $alias, 'static' ),
             },
         ErrorHandler => {
@@ -222,6 +248,7 @@ sub _stop
 sub shutdown
 {
     my( $self ) = @_;
+    # xwarn "$$ XUL shutdown";
     $self->{shutdown} = 1;
     $poe_kernel->post( $self->{aliases}{httpd}, 'shutdown' );
     $poe_kernel->alias_remove( delete $self->{alias} );
@@ -414,7 +441,26 @@ sub poe_kernel
     return RC_OK;
 }
 
+sub poe_test
+{
+    my( $self, $kernel, $req, $resp ) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
 
+    local $self->{request} = $req;
+    local $self->{response} = $resp;
+
+    $self->parse_args( $req );
+
+    my $uri_restart = $self->uri_restart;
+    my $content = <<TEXT;
+uri_restart: $uri_restart
+TEXT
+    xwarn "content=$content";
+    $resp->code( RC_OK );
+    $resp->content_type( 'text/plain' );
+    $resp->content_length( length $content );
+    $resp->content( $content );
+    return RC_OK;
+}
 
 
 
@@ -427,7 +473,8 @@ sub static
 {
     my( $self, $kernel, $req, $resp ) = @_[ OBJECT, KERNEL, ARG0..$#_ ];
 
-    DEBUG and xwarn "static";
+    DEBUG and 
+        xwarn "POE::Component::XUL->static";
     if( $self->{shutdown} ) {
         xwarn "Static request, but we are shutdown\n";
         return;
@@ -448,7 +495,7 @@ sub static
         # Send the file
         my $uri = $req->uri->path;
         # DEBUG and 
-            xdebug "Static request: $uri";
+                xdebug "Static request: $uri";
 
         my $file = $self->uri_to_file( $uri );
         if( -d $file ) {
@@ -562,9 +609,49 @@ sub static_file
     # Read and set the content
     my $c = join '', <$in>;
     undef( $in );
+
+    if( ($uri eq '/' or $uri =~ m(^/index.html?)) and 
+            $c =~ /\[APP-LIST\]/ ) {
+        my $alist = $self->app_list;
+        $c =~ s/\[APP-LIST\]/$alist/g;
+    }
+
     $self->{response}->content( $c );
     $self->{response}->content_length( length $c );
     return RC_OK;
+}
+
+####################################################################
+sub app_list
+{
+    my( $self ) = @_;
+    my @html = <<HTML;
+<script type="text/javascript"><!--
+function Link(name) {
+    window.open(
+        "start.xul?" + name + "#1" ,
+        (new Date()).getTime(),
+        "toolbar=0,menubar=0,status=0,resizable=1"
+    );
+    return false;
+}
+// ->
+</script>
+<ul id="POE-XUL-application-list">
+HTML
+    my $lang = 'fr';    # TODO
+    my $count = keys %{ $self->{apps} };
+    foreach my $app ( sort keys %{ $self->{apps} } ) {
+        next if $app eq 'IGDAIP' and 1 != $count;
+        my $name = $self->{app_names}{$app}{$lang} || $app;
+        push @html, <<HTML;
+    <li><a href="start.xul?$app" onclick="return Link('$app')">$name</a>
+            (<a href="start.xul?$app">Avec menus</a>)</li>
+HTML
+    }
+
+    push @html, "</ul>";
+    return join "\n", @html;
 }
 
 ####################################################################
@@ -631,7 +718,25 @@ sub guess_ct
     return $ct;
 }
 
+############################################################
+# URI that would restart an application
+sub uri_restart
+{
+    my( $self ) = @_;
+    my $req = $self->{request};
+    my $uri = $req->uri;
 
+    # We need to know what the browser thinks we are called
+    my $host = $req->header( 'X-Forwarded-Host' );
+    if( $host ) {
+        xwarn "Restart on $host";
+        $uri->host( $host );
+    }
+    $uri->path( '/start.xul' );
+    my $app = $req->param( 'app' );
+    $uri->query_keywords( $app );
+    return $uri;
+}
 
 ############################################################################
 # Error handling
@@ -703,12 +808,15 @@ sub error_unknown_session
 
     xwarn "Unknown session $SID";
 
+    my $url = $self->uri_restart;
+
     return $self->error( RC_GONE, <<"    HTML", 'text/html');
 <html>
     <head><title>410 absent</title></head>
     <body>
-    <h1>Session inexistante</h1>
-    <p>La session <tt>$SID</tt> n'existe pas. Elle doit être expirée.</p>
+    <h1>Program inexistante</h1>
+    <p>Votre session (<tt>$SID</tt>) n'existe pas. Elle est surement expirée.</p>
+    <p><a href="$url">Ouvrir une nouvelle session</a>.</p>
     </body>
 </html>
     HTML
@@ -803,7 +911,7 @@ sub post_connection
     push @log, "[". POSIX::strftime("%d/%m/%Y:%H:%M:%S %z", localtime)."]",
                join ' ', $req->method, $req->uri;
     $log[-1] = qq("$log[-1]");
-    push @log, $resp->code, ($resp->content_length||-1);
+    push @log, ($resp->code||'000'), ($resp->content_length||-1);
 
     xlog( { message => join( ' ', @log )."\n",
             type    => 'REQ'

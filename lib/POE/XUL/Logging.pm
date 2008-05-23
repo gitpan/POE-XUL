@@ -1,5 +1,5 @@
 package POE::XUL::Logging;
-# $Id: Logging.pm 654 2007-12-07 14:28:39Z fil $
+# $Id: Logging.pm 1009 2008-05-23 17:03:36Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 #
 # Handle logging features for the application
@@ -173,6 +173,7 @@ sub default
 	my $type = $exception->{type}||'';
 	my $msg = $exception->{message};
     $msg = '' unless defined $msg;
+    $msg =~ s/\n+$// if $exception->{location};
     if( $msg !~ /\n$/ ) {
         $msg .= " at $exception->{caller}[1] line $exception->{caller}[2]"
 					if $exception->{caller};
@@ -204,7 +205,7 @@ sub __mk_exception
     $, = '' unless defined $,;
     return {
             type    => $type,
-            message => join( $,, @msg),
+            message => join( $,, grep {defined} @msg),
             caller  => [ caller( $level ) ]
         };
 }
@@ -223,7 +224,9 @@ sub xwarn
 
 sub xcarp
 {
-    $SINGLETON->dispatch( $SINGLETON->__mk_exception( 'WARN', 2, @_ ) );
+    my $ex = $SINGLETON->__mk_exception( 'WARN', 2, @_ );
+    $ex->{location} = 1;
+    $SINGLETON->dispatch( $ex );
 }
 
 sub xlog

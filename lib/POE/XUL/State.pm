@@ -1,5 +1,5 @@
 package POE::XUL::State;
-# $Id: State.pm 664 2007-12-11 22:25:08Z fil $
+# $Id: State.pm 1009 2008-05-23 17:03:36Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
@@ -97,7 +97,7 @@ sub make_command_new
 sub make_command_bye 
 {
 	my( $self, $parent_id, $index ) = @_;
-    return [ bye => $self->{id}] #, $parent_id, $index ];
+    return [ bye => $self->{id} ] #, $parent_id, $index ];
 }
 
 ##############################################################
@@ -163,14 +163,23 @@ sub make_command_set
 {
 	my($self, $key, $value) = @_;
 
-    return [ 'set', $self->get_id, $key, $value ];
+    return [ 'set', $self->{id}, $key, $value ];
+}
+
+#############################################################
+sub make_command_style
+{
+	my($self, $property, $value) = @_;
+
+    $property =~ s/-([a-z])/\U$1/g;
+    return [ 'style', $self->{id}, $property, $value ];
 }
 
 #############################################################
 sub make_command_remove
 {
 	my($self, $key) = @_;
-    return [ 'remove', $self->get_id, $key ];
+    return [ 'remove', $self->{id}, $key ];
 }
 
 
@@ -181,7 +190,7 @@ sub get_buffer_as_commands
 	my( $self ) = @_;
     # use Data::Dumper;
     # warn Dumper $self->{buffer};
-	return $self->get_buffer;
+    return $self->get_buffer;
 }
 
 
@@ -203,6 +212,14 @@ sub remove_attribute
     my( $self, $key ) = @_;
 
     push @{$self->{buffer}}, $self->make_command_remove( $key );
+    return;
+}
+
+#############################################################
+sub style_change
+{
+    my( $self, $property, $value ) = @_;
+    push @{$self->{buffer}}, $self->make_command_style( $property, $value );
     return;
 }
 

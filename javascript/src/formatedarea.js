@@ -8,6 +8,7 @@ function FormatedArea( id, cells ) {
 
     this.cols = this.cells[0].cols;
     this.rows = this.cells[0].rows;
+    this.streamlines = this.cells[0].streamlines;
 
     return obj;
 }
@@ -101,73 +102,227 @@ FormatedArea.prototype.keypress = function ( event ) {
         return false;
 
     var k = event.charCode ? event.charCode : event.which;
-
-    if( k == 0 || k == 8                // 0 == control, 8 == backspace
+    if( k == 0                      // 0 == control
                || event.altKey || event.ctrlKey || event.metaKey ) {
+        if( event.keyCode == Event['DOM_VK_DELETE'] ) 
+            return this.kp_delete( event );
         return true;
     }
 
+    if( k == 13 || k == 10 ) {          // 13 = carriage return, 10 = linefeed
+        return this.kp_newline( event, k );
+    }
+    else if( k == 8 ) {                 // 8 == backspace
+        return this.kp_backspace( event, k );
+    }
+    else if( this.is_substitution() ) {
+        return this.kp_substitution( event, k );
+    }
+    else if( this.is_append() ) {
+        return this.kp_append( event, k );
+    } 
+    else {
+        return this.kp_insert( event, k );
+    }
+}
+
+
+// ------------------------------------------------------------------
+FormatedArea.prototype.kp_newline = function ( event, k ) {
+    var input = this.input();
+    var key = String.fromCharCode( k );
+    var rows = this.lines();
+
+    // an insert will convert 2 -> 3 (say) which we might want to avoid.
+    // Hence the test below is <.  This also prevents any trailing \n, 
+    // which I can live with.
+    if( rows < this.rows ) {
+        this.insert_key( key );
+    }
+    return false;
+}
+ 
+// ------------------------------------------------------------------
+FormatedArea.prototype.kp_append = function ( event, k ) {
+    var input = this.input();
+    var key = String.fromCharCode( k );
+    var rows = this.lines();
+
+    var last = this.line( rows-1 );
+    if( last && last.length >= this.cols ) {
+        // append, but got to the end of a line
+
+        if( rows >= this.rows )         // don't allow anything more
+            return false;
+
+        // move to next line
+        // TODO: word wrap
+        this.insert_key( "\n" );
+    }
+    this.insert_key( key );
+    return false;
+}
+
+
+// ------------------------------------------------------------------
+FormatedArea.prototype.kp_substitution = function ( event, k ) {
     var input = this.input();
     var pos0 = input.selectionStart;
     var pos1 = input.selectionEnd;
     var key = String.fromCharCode( k );
     var rows = this.lines();
+    var row0 = this.lines( pos0 ) - 1;
+    var row1 = this.lines( pos1 ) - 1;
 
-    if( k == 13 || k == 10 ) {          // 13 = carriage return, 11 = linefeed
-        // an insert will convert 2 -> 3 (say) which we want to avoid
-        // Hence the test below is <.  This also prevents any trailing \n, 
-        // which I can live with
-
-        if( rows < this.rows ) {
-            this.insert_key( key );
-        }
+    if( row0 != row1 ) {                // crossing lines
+        pos1 -= this.line_offset( pos1 ) + 1; // move end to start of row1
+        input.selectionEnd = pos1;
     }
-    else if( this.is_substitution() ) {
-        var row1 = this.lines( pos0 ) - 1;
-        var row2 = this.lines( pos1 ) - 1;
-        if( row1 != row2 ) {                // crossing lines
-            pos1 -= this.line_offset( pos1 ) + 1; // move end to start of row1
-            input.selectionEnd = pos1;
-        }
 
-        this.insert_key( key );
+    this.insert_key( key );
+
+    return false;
+}
+
+// ------------------------------------------------------------------
+FormatedArea.prototype.kp_insert = function ( event, k ) {
+    var input = this.input();
+    var pos0 = input.selectionStart;
+    var pos1 = input.selectionEnd;
+    var key = String.fromCharCode( k );
+    var rows = this.lines();
+    var row0 = this.lines( pos0 ) - 1;
+    var row1 = this.lines( pos1 ) - 1;
+
+    var at_row = this.lines( input.selectionStart )-1;
+    var current = this.line( at_row );
+
+    // find the position within the row
+    var row_offset = this.line_offset( input.selectionStart );
+    // alert( "insert" );
+    if( row_offset >= this.cols ) {     // at end of row
+        input.selectionStart =          // move past the newline
+            input.selectionEnd += 1;
+        at_row++;
+        current = this.line( at_row );
     }
-    else if( this.is_append() ) {
-        var last = this.line( rows-1 );
-        if( last && last.length >= this.cols ) {
-            // append, but got to the end of a line
+    // alert( current );
+    if( current && current.length >= this.cols ) {
+        this.replace_row( at_row, 
+                            current.substr2( current.length-1, 1, '' )
+                        );
+    }
+    this.insert_key( key );
 
-            if( rows >= this.rows )         // don't allow anything more
-                return false;
+    return false;
+}
 
-            // move to next line
-            // TODO: word wrap
-            this.insert_key( "\n" );
+// ------------------------------------------------------------------
+FormatedArea.prototype.kp_backspace = function ( event, k ) {
+    var input = this.input();
+    var pos0 = input.selectionStart;
+    var pos1 = input.selectionEnd;
+
+    if( pos0 != pos1 ) {                // act like a delete key
+        return this.kp_delete( event );
+
+    }
+
+    var row0 = this.lines( pos0 ) - 1;
+    var row1 = this.lines( pos1 ) - 1;
+    var rows = this.lines();
+    var lines = input.value.split( "\n" );
+
+    if( pos0 == 0 ) {               // beginging of the string
+        return true;                // just ignore it
+    }
+
+    var prev = input.value.charCodeAt( pos0-1 );
+//    fb_log( { prev: prev } );
+    if( prev != 13 && prev != 10 ) {    // 13 = CR, 10 = LF
+        return true;                    // real backspace
+    }
+
+    var line0 = lines[ row0-1 ];
+    var line1 = lines[ row0 ];
+    var off1  = 0;
+
+    if( this.streamlines ) {
+
+        if( line0.length >= this.cols ) {
+            return false;
         }
-        this.insert_key( key );
-    } 
+        
+        lines[row0-1] = line0 + line1.substr( 0, 1 );                
+        lines[row0] = line1.substr( 1 );                
+    }
     else {
-        var at_row = this.lines( input.selectionStart )-1;
-        var current = this.line( at_row );
+        var total = line0.length + line1.length;
+        if( total < this.cols ) {
+            return true;            // lines are short enough
+        }
+        // joining lines that are too long.  We want to find a 
+        // "word break" in line1 that will come under the total length
+        off1 = this.cols - line0.length;
+        while( off1 > 0 && off1 < line1.length && 
+                line1.charCodeAt( off1 ) != 32 ) {  // 32 = space
+            off1--;
+        }
+        if( off1 <= 0 ) {           // failed to do so
+            return false;           // so we can't join the lines
+            // Q: should we move the selection to end of previous line?
+        }
 
-        // find the position within the row
-        var row_offset = this.line_offset( input.selectionStart );
-        // alert( "insert" );
-        if( row_offset >= this.cols ) {     // at end of row
-            input.selectionStart =          // move past the newline
-                input.selectionEnd += 1;
-            at_row++;
-            current = this.line( at_row );
-        }
-        // alert( current );
-        if( current && current.length >= this.cols ) {
-            this.replace_row( at_row, 
-                                current.substr2( current.length-1, 1, '' )
-                            );
-        }
-        this.insert_key( key );
+        lines[ row0-1 ] = line0.substr( 0, line0.length )
+                             + line1.substr( 0, off1 );
+        if( off1 < line1.length )
+            // NOTE +1 on next line will remove the space
+            lines[ row0 ] = line1.substr( off1 );
+        else 
+            lines[ row0 ] = '';
+    }            
+    // new value
+    input.value = lines.join( "\n" );
+
+    // position end of prev line
+    var offset = 0;
+    for( var l=0; l<row0; l++ )
+        offset += lines[l].length + 1; // +1 for the LF
+
+    if( this.streamlines ) 
+        offset--;
+    else
+        offset -= off1;
+    input.selectionStart =
+        input.selectionEnd = offset -1 ; // -1 before last LF
+    return false;
+}
+
+
+// ------------------------------------------------------------------
+FormatedArea.prototype.kp_delete = function ( event ) {
+    var input = this.input();
+    var pos0 = input.selectionStart;
+    var pos1 = input.selectionEnd;
+    var row0 = this.lines( pos0 ) - 1;
+    var row1 = this.lines( pos1 ) - 1;
+    var lines = input.value.split( "\n" );
+
+    if( row0 != row1 ) {        // crossing a line
+        // Move pos0 to the begin of row1.  This saves us the pain
+        // of joining too lines
+        pos0 = 0;
+        for( var l=0; l<row1; l++ )
+            pos0 += lines[l].length + 1; // +1 for the LF
+        input.selectionStart = pos0;
+    }
+    else if( pos0 == pos1 ) {
+        pos1++;
+        input.selectionEnd = pos1;
     }
 
+    this.insert_key( '' );
+    pos1 = input.selectionEnd = input.selectionStart = pos0;
     return false;
 }
 

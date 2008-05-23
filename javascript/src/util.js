@@ -1,5 +1,5 @@
 // ------------------------------------------------------------------
-// Copyright 2007 Philip Gwyn.  All rights reserved.
+// Copyright 2007-2008 Philip Gwyn.  All rights reserved.
 // ------------------------------------------------------------------
 
 // ------------------------------------------------------------------
@@ -235,16 +235,16 @@ function set_window_style() {
 
 // ------------------------------------------------------------------
 // show a message in the firebug console, if it exists
-function fb_log( text ) {
+function fb_log( ) {
     if( window['console'] && window['console']['log'] ) {
-        console.log( text );
+        console.log.apply( console, arguments );
     }
 }
 
 // ------------------------------------------------------------------
 function $debug ( string ) {
     if( window['console'] && window['console']['log'] ) {
-        console.log( string );
+        console.log.apply( console, arguments );
     }
 }
 
@@ -262,3 +262,105 @@ Element.isVisible = function(element) {
     return Element.isVisible( element.parentNode );
 }
 
+// ------------------------------------------------------------------
+// Make a XUL node draggable
+function xulDraggable ( params ) {
+    this.maxLeft = params.maxLeft;
+    this.maxTop = params.maxTop;
+    this.startPos = 0;
+    this.waiting = 0;
+    if( params['node'] ) {
+        this.node( params.node );
+    }
+    if( params['activeNode'] ) {
+        this.activeNode( params.activeNode );
+    }
+    else if( this['mNode' ] ) {
+        this.activeNode( this.mNode );
+    }
+}
+
+// ------------------------------------------------------------------
+xulDraggable.prototype.node = function ( el ) {
+    this.mNode = el;
+}
+
+// ------------------------------------------------------------------
+xulDraggable.prototype.activeNode = function ( el ) {
+    this.aNode = el;
+
+    var self = this;
+    el.addEventListener("mousedown", function (e) { self.mouseDown(e) }, false);
+    this.mMove = function (e) {self.mouseMove(e) };
+    this.mUp = function (e) {self.mouseUp(e) };
+
+    // 2008/05 while mouseout seems like a good idea, it can cause
+    // us to loose "hold" if the mouse moves faster then mouseMove
+    // events are sent
+//  el.addEventListener("mouseout", function (e) { self.mouseUp(e) }, false);
+
+}
+
+// ------------------------------------------------------------------
+xulDraggable.prototype.mouseDown = function (event) {
+    this.startPos = { X: event.clientX,
+                      Y: event.clientY,
+                      top: parseInt( this.mNode.style.top ),
+                      left: parseInt( this.mNode.style.left )
+                    };
+    window.addEventListener("mousemove", this.mMove, false);
+    window.addEventListener("mouseup", this.mUp, false);
+    // fb_log( this.startPos );
+}
+
+// ------------------------------------------------------------------
+xulDraggable.prototype.mouseUp = function (event) {
+    this.startPos = 0;
+    window.removeEventListener("mousemove", this.mMove, false);
+    window.removeEventListener("mouseup", this.mUp, false);
+}
+
+// ------------------------------------------------------------------
+xulDraggable.prototype.mouseMove = function (event) {
+    if (this.startPos != 0) {
+        var deltaX = event.clientX-this.startPos.X;
+        var deltaY = event.clientY-this.startPos.Y;
+        this.moveBy( deltaX, deltaY );
+    }
+}
+
+// ------------------------------------------------------------------
+xulDraggable.prototype.moveBy = function (deltaX, deltaY) {
+    if( this.startPos != 0 ) {
+
+        var X = this.startPos.left + deltaX;
+        X = Math.max( X, 0 );
+        X = Math.min( X, this.maxLeft );
+
+        var Y = this.startPos.top + deltaY;
+        Y = Math.max( Y, 0 );
+        Y = Math.min( Y, this.maxTop );
+
+        // fb_log( { deltaX: deltaX, deltaY: deltaY, X: X, Y: Y } );
+        this.moveTo( X, Y );
+    }
+}
+
+// ------------------------------------------------------------------
+xulDraggable.prototype.moveTo = function (X, Y) {
+    this.left = X;
+    this.top = Y;
+    if( ! this.waiting ) {
+        // this.__moveTo();
+        this.waiting = 1;
+        var self = this;
+        window.setTimeout( function () { self.__moveTo() }, 100 );
+    }
+}
+
+xulDraggable.prototype.__moveTo = function () {
+    this.mNode.style.left = this.left + "px";
+    this.mNode.style.top = this.top + "px";
+    this.waiting = 0;
+    // fb_log( { left: this.left, top: this.top } );
+}

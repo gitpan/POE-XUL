@@ -1,6 +1,6 @@
 // ------------------------------------------------------------------
 // Portions of this code based on works copyright 2003-2004 Ran Eilam.
-// Copyright 2007 Philip Gwyn.  All rights reserved.
+// Copyright 2007-2008 Philip Gwyn.  All rights reserved.
 // ------------------------------------------------------------------
 
 var $application;
@@ -26,6 +26,7 @@ function POEXUL_Application () {
     this.conduit = new POEXUL_Conduit ( this.baseURI() );
     $application = this;
     var b1 = new POEXUL_Status;
+    var b2 = new POEXUL_Blocker;
     this.init_window( window );
 }
 
@@ -134,6 +135,9 @@ _.getSID = function ( ) {
 
 // ------------------------------------------------------------------
 _.crash = function ( why ) {
+    if( $blocker )
+        $blocker.unblock();
+
     this.status( "error" );
 
     this.crashed = why;
@@ -225,7 +229,6 @@ _.exception = function ( type, EXs ) {
     $application.crash( type + " ERROR " + msg.join( "\n" ) );
 }
 
-
 // events ---------------------------------------------------------------------
 
 _.fireEvent_Command = function (domEvent) {
@@ -280,6 +283,10 @@ _.fireEvent_Command = function (domEvent) {
             //                            realSource.getAttribute( 'id' ) );
         }
     }
+    else if ( source.tagName == 'splitter' ) {
+        // ignore the clicks on a splitter
+        return;
+    }
     else {
 
         if( FormatedField ) {
@@ -328,8 +335,14 @@ _.fireEvent_Keypress = function (e) {
     if( e.cancelable )
         e.preventDefault();
 
-    var buttons = document.getElementsByTagName( 'button' );
     // fb_log( "Pressed "+name );
+    this.fireEvent_KP_F( 'button', name );
+    this.fireEvent_KP_F( 'toolbarbutton', name );
+}
+
+_.fireEvent_KP_F = function ( tag, name ) {
+
+    var buttons = document.getElementsByTagName( tag );
     for( var q = 0 ; q < buttons.length ; q++ ) {
         var B = buttons[q];
         if( Element.isVisible( B ) ) {
@@ -404,6 +417,8 @@ _.runRequest = function (event) {
     this.isNotCrashed();
 
     event = this.setupEvent( event );
+
+    fb_log( "event=" + event.event );
 
     var self = this;
     this.status( "load" );
@@ -566,7 +581,7 @@ _.closed = function ( id, e ) {
 
 // ------------------------------------------------------------------
 // Disconnect a sub window is closing
-_.disconnect = function ( id ) {
+_.disconnect = function ( id ) {    // TODO: make sure this is a lateCommand
     this.runRequest( { event: 'disconnect', 
                        window: id 
                    } );

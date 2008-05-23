@@ -4,7 +4,7 @@ use strict;
 use warnings;
 
 my %FILES = (
-    'NS6lib.js' => [ qw( Application.js Conduit.js Runner.js Status.js ) ],
+    'NS6lib.js' => [ qw( Application.js Conduit.js Runner.js Status.js Blocker.js ) ],
     'prototype.js' => [ qw( prototype.js ) ],
     'POE-XUL.js' => [ qw( css_browser_selector.js util.js formated.js 
                             formatedinput.js formatedarea.js
@@ -29,16 +29,21 @@ while( my( $out, $files ) = each %FILES ) {
             open SRC, $infile or die "Unable to create $infile: $!";
             print "$infile -> $outfile\n";
             print JS <<JS;
-
-
 // ---------------------------------------------------------------------------
 // FILE: $infile
 // ---------------------------------------------------------------------------
 
 JS
             print JS <SRC>;
+            print JS <<JS;
+
+// ---------------------------------------------------------------------------
+// EOF: $infile
+// ---------------------------------------------------------------------------
+JS
             $once++;
             close SRC;
+            last;
         }
         next if $once;
         die "Unable to find $in in @SRC";

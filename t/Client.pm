@@ -49,6 +49,13 @@ sub get_node
 }
 
 ######################################################
+sub find_ID
+{
+    my( $self, $id ) = @_;
+    return $self->{NODES}->{ $id };
+}
+
+######################################################
 sub decode_resp
 {
     my( $self, $resp, $phase ) = @_;
@@ -347,15 +354,6 @@ sub find_parent
     return;
 }
 
-######################################################
-sub find_ID
-{
-    my( $self, $id ) = @_;
-    return $self->{NODES}->{ $id };
-}
-
-
-
 ############################################################
 sub is_visible
 {
@@ -432,16 +430,38 @@ sub boot_args
 }
 
 ######################################################
+sub list_ID
+{
+    my( $self ) = @_;
+    my @list = sort grep { !/^PX/ } keys %{ $self->{NODES} };
+    return join ', ', @list unless wantarray;
+    return @list;
+}
+######################################################
+sub test_node
+{
+    my( $self, $node, $type ) = @_;
+    my $name = $node;
+    unless( ref $node ) {
+        $node = $self->find_ID( $node );
+    }
+    else {
+        $name = $node->{id};
+    }
+    $type ||= 'node';
+    ok( $node, "Found $type $name" )
+            or die "I really need that $type\nHave: ". $self->list_ID;
+    return $node;    
+}
+
+######################################################
 sub Click
 {
     my( $self, $button ) = @_;
 
     unless( ref $button ) {
         diag( "Clicking $button" );
-        $button = $self->find_ID( $button );
-        ok( $button, "Found button" )
-            or Carp::croak "I really need that button in ", 
-                                ($self->{name}||"the main window");
+        $button = $self->test_node( $button, 'button' );
     }
     else {
         diag( "Clicking $button->{id}" );

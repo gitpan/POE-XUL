@@ -1,5 +1,13 @@
 Revision history for Perl extension POE::XUL.
 
+0.0400 May 23 2008
+    - Added POE::XUL::Style
+    - Added names for applications, and [APP-LIST]
+    - Fkeys work on <toolbarbutton>s
+    - Added xulDraggable
+    - Added link to restart App if it is timedout
+    - Numerous other tweaks
+
 0.0300 Dec 12 2007
     - Added POE::XUL::Application.
     - Better documentation

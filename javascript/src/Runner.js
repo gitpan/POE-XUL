@@ -1,9 +1,10 @@
 // ------------------------------------------------------------------
 // Portions of this code based on works copyright 2003-2004 Ran Eilam.
-// Copyright 2007 Philip Gwyn.  All rights reserved.
+// Copyright 2007-2008 Philip Gwyn.  All rights reserved.
 // ------------------------------------------------------------------
 function Throw(a, b) {
         var message       = b? (a.message || a.description) + "\n" + b: a;
+        fb_log(message);
         var exception     = b? a: new Error;
         exception.message = exception.description = message;
         throw exception;
@@ -100,7 +101,7 @@ _.runCommands = function ( commands ) {
 // Run a batch of commands, then give up a time-slice
 _.runBatch = function ( commands, late ) {
 
-    if( late )
+    if( late && 0 )
         fb_log( 'runBatch n=' + commands.length + " late=" + late );
     var count = 0;
     var accume = {};
@@ -113,7 +114,7 @@ _.runBatch = function ( commands, late ) {
             var cmd = commands.shift();
             if( late && 0 ) 
                 fb_log( 'runBatch count=' + count + 
-                            " command=" + cmd.nodeId + "." + cmd.arg1 );
+                        " command=" + cmd.nodeId + "." + cmd.arg1 );
             this.late = late;
             var rv = this.runCommand( cmd );
             this.late = 0;
@@ -154,7 +155,7 @@ _.deferCommands = function ( commands, late ) {
     var blip = self.BLIP;
     if( late ) 
         blip *= 20;
-    if( late ) 
+    if( late && 0 ) 
         fb_log( 'defer n=' + commands.length + 
                         " late=" + late + 
                         " blip=" + blip );
@@ -196,7 +197,7 @@ _.addNewNodes = function () {
 // ------------------------------------------------------------------
 _.runLateCommands = function ( age ) {
 
-    fb_log( 'runLateCommands' );
+    // fb_log( 'runLateCommands' );
     if( $status )
         $status.hide();
 
@@ -216,7 +217,7 @@ _.runLateCommands = function ( age ) {
 
 // ------------------------------------------------------------------
 _._runLateCommands = function ( lateCommands, age ) {
-    fb_log( 'late commands age=' + age + " n=" + lateCommands.length );
+    // fb_log( 'late commands age=' + age + " n=" + lateCommands.length );
 
     this.runBatch( lateCommands, age );
 
@@ -310,13 +311,8 @@ _.runCommand = function (command) {
     else if( methodName == 'cdata' ) {
         this.commandCDATA( nodeId, arg1, arg2 );
     }
-    else if( methodName == 'framify' ) {
-        if( this.late == 2 ) {               // framify is extra late
-            this.commandFramify( nodeId );
-        }
-        else {
-            this.lateCommands.push( command );
-        }
+    else if( methodName == 'style' ) {
+        this.commandStyle( nodeId, arg1, arg2 );
     }
     else if( methodName == 'popup_window' ) {
         this.commandPopupWindow( nodeId, arg1 );
@@ -325,7 +321,7 @@ _.runCommand = function (command) {
         this.commandCloseWindow( nodeId );
     }
     else if( methodName == 'timeslice' ) {
-        fb_log( methodName );
+        // fb_log( methodName );
         rv = 2;
     }
     else if( window.name ) {
@@ -348,7 +344,7 @@ _.isLateCommand = function ( command ) {
         return true;
     }
     if( key == 'value' && element.nodeName == 'search-list' ) {
-        // console.log( 'late value=' + command['arg2'] );
+        // fb_log( 'late value=' + command['arg2'] );
         return true;
     }
     return false;
@@ -426,6 +422,23 @@ _.commandCDATA = function ( nodeId, index, data ) {
         Throw(e,
                 'Cannot create new CDATA: ' + nodeId +
                         '[' + index + ']=' + data 
+            );
+    }
+}
+
+// ------------------------------------------------------------------
+_.commandStyle = function ( nodeId, property, value ) { 
+    try {
+        var element = this.newNodes[nodeId];
+        if (!element) element = this.getNode(nodeId);
+
+        // fb_log( { id: nodeId, style: property, value: value } );
+        element.style[property] = value;
+        
+    } catch (e) {
+        Throw(e,
+                'Cannot set style ' + nodeId + '.style.' + property + 
+                                      '=' + value 
             );
     }
 }
@@ -534,14 +547,10 @@ _.commandSetNode = function (nodeId, key, value) {
                 this.changedIDs[ nodeId ] = value;
             }
         }
-
-        if( key == 'scrollTop' || 
-                    ( key == 'style' && 
-                        ( value.match( 'display:' ) || value == '' ) ) ||
-                    ( key == 'value' ) ) {
-            // if( !this.booting ) 
-            //    fb_log( element.id + "." + key + "=" + value );            
+        else if( POEXUL_Runner.activateEvent[ key ] ) {
+            this.commandSetEvent( element, key, value );
         }
+
 
         if ( POEXUL_Runner.propertyAttributes[key] ) {
             this.commandSetProperty( element, key, value );
@@ -549,13 +558,11 @@ _.commandSetNode = function (nodeId, key, value) {
         else if( !freshNode && POEXUL_Runner.freshAttributes[ key ] ) {
             // fb_log( "non-fresh " + key + "=" + value );
             this.commandSetProperty( element, key, value );
-            element.setAttribute( key, value );
         }
-        else {
-            element.setAttribute( key, value );
-        }
+        element.setAttribute( key, value );
     } 
     catch (e) {
+        throw(e);
         Throw(e,
             'Cannot do set on node: [' + nodeId + ', ' + key + ', ' + value + ']'
         );
@@ -579,6 +586,47 @@ _.commandSetProperty = function ( element, key, value ) {
 
 }
 
+
+// ------------------------------------------------------------------
+_.commandSetEvent = function ( element, key, value ) {
+
+    // key = clickable
+    var event = POEXUL_Runner.activateEvent[ key ];
+    // event = click
+
+    var att = key + "-code";
+    // att = clickable-code
+
+    // fb_log( { key: key, event: event, att: att, id: element.getAttribute( 'id' ) } );
+
+    if( value && value != "0" ) {
+        // Already active?
+        if( element[att] )
+            return;
+
+        var ev = event.slice( 0, 1 ).toUpperCase() +
+                 event.slice( 1 );
+        // ev = Click
+        element[att] = function (e) { 
+                                // make sure clickable is still set
+                                var now = element.getAttribute( key );
+                                fb_log( { key: key, now: now } );
+                                if( now && now != "0" )
+                                    $application.fireEvent( ev, 
+                                                        { target: element },
+                                                        { from: key, 
+                                                          now: now } 
+                                                      );
+                           };
+        element.addEventListener( event, element[att], false );
+    }
+    else if( element[att] ) {
+        var code = element[att];
+        delete element[att];
+        element.removeEventListener( key, code, false );
+    }
+}
+
 // ------------------------------------------------------------------
 _.commandSelectedIndex = function ( element, value, _try ) {
 
@@ -594,11 +642,14 @@ _.commandSelectedIndex = function ( element, value, _try ) {
         }
 
 
+        // This line should be enough... BUT ISN'T!  I hate you, milkman
+        // random behaviour
+        element.selectedIndex = value;
         var sel = popup.childNodes[value];
         // fb_log( '.selectedItem = ' + sel );
-        element.selectedIndex = value;
-        // element.selectedItem = sel;
-        fb_log( element.id + '.selectedItem.id = ' + element.selectedItem.id );
+        // Next line forces the display to be updated in some situations
+        element.value = sel.value;
+        // fb_log( element.id + '.selectedItem.id = ' + element.selectedItem.id );
         // fb_log( element.id + '.selectedIndex = ' + element.selectedIndex );
         done = true;
     }
@@ -830,7 +881,7 @@ POEXUL_Runner.freshAttributes = {
 	'id'            : true,
 };
 
-// These attributes should be set after then node is added to the document
+// These attributes should be set after the node is added to the document
 POEXUL_Runner.lateAttributes = {
 	'selectedIndex' : true,
 	'sizeToContent' : true,
@@ -847,5 +898,9 @@ POEXUL_Runner.simpleMethodAttributes = {
     'focus'               : true,
 	'blur'                : true,
     'recalc'              : true
+};
+
+POEXUL_Runner.activateEvent = {
+	'clickable'       : 'click',
 };
 

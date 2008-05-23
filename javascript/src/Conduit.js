@@ -1,6 +1,6 @@
 // ------------------------------------------------------------------
 // Portions of this code based on works copyright 2003-2004 Ran Eilam.
-// Copyright 2007 Philip Gwyn.  All rights reserved.
+// Copyright 2007-2008 Philip Gwyn.  All rights reserved.
 // ------------------------------------------------------------------
 function POEXUL_Conduit ( uri ) {
 
@@ -45,6 +45,15 @@ _.request = function ( req, callback ) {
 
     this.setupRequest( req );
 
+    if( req.event == 'Click' ) {
+        if( $blocker ) 
+            $blocker.block();
+        else
+            fb_log( "no blocker" );
+    }
+
+
+
     window.status = '';
     this.time = Date.now();
 
@@ -65,6 +74,8 @@ _.request = function ( req, callback ) {
 // Failed!
 _.onFailure = function ( transport, json ) {
 
+    if( $blocker )
+        $blocker.unblock();
     var ct = transport.getResponseHeader( 'Content-Type' );
     if( ct == 'text/html' ) {
         $application.crash( transport.responseText );
@@ -80,6 +91,8 @@ _.onFailure = function ( transport, json ) {
 // ------------------------------------------------------------------
 // Browser failure!
 _.onException = function ( transport, e ) {
+    if( $blocker )
+        $blocker.unblock();
     // $application.crash( "Exception: " + e.toString );
     throw( e );
 }
@@ -88,8 +101,8 @@ _.onException = function ( transport, e ) {
 // Success!
 _.onSuccess = function ( transport, json, callback ) {
     
-    // Allow other requests through
-    // delete this['req'];
+    if( $blocker )
+        $blocker.unblock();
 
     if( !transport ) 
         return $application.crash( "Why no transport" );
@@ -113,7 +126,7 @@ _.onSuccess = function ( transport, json, callback ) {
 _.parseResponse = function ( transport ) {
 
     var ct = transport.getResponseHeader( 'Content-Type' );
-    if( ct != 'application/json' ) {
+    if( ct.substr(0, 16) != 'application/json' ) {
         $application.crash( "We require json response, not " + ct );
         return;        
     }
@@ -128,7 +141,10 @@ _.parseResponse = function ( transport ) {
     }
     var json;
     try { 
-        json = eval( "(" + transport.responseText + ")" );
+        var text = transport.responseText;
+//        fb_log( "text.length=" + text.length );
+//        fb_log( "Content-Length=" + transport.getResponseHeader( 'Content-Length' ) );
+        json = eval( "(" + text + ")" );
     }
     catch (ex) {
         $application.exception( "JSON", [ ex ] );
@@ -141,6 +157,7 @@ _.parseResponse = function ( transport ) {
 _.done = function () {
     $application.timing( 'Request', this.time, Date.now() );
 
+    // Allow other requests through
     delete this['req'];
     this.do_next();
 }
@@ -153,7 +170,13 @@ _.defer = function ( req, callback ) {
 
     if( this.req.event == 'Click' ) {
         fb_log( "Attempted " + req.event + " during a " + this.req.event );
-        alert( "Unable to send '" + req.event + "' at this time." );
+
+        if( req.event == 'Click' && req.source_id == this.req.source_id ) {
+            // don't warn
+        }
+        else {
+            alert( "Unable to send '" + req.event + "' at this time." );
+        }
         return;
     }
 

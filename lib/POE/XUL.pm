@@ -1,6 +1,6 @@
 # Copyright 2007 by Philip Gwyn.  All rights reserved;
 
-our $VERSION = '0.0300';
+our $VERSION = '0.0400';
 
 __END__
 
@@ -95,17 +95,42 @@ removed.
 
 =head2 Application server
 
+<<<<<<< .working
+POE::XUL applications generaly have one L<POE::session> per application
+instance.  This POE session is spawned when a boot request is recieved from
+the client.  The session then must handle a 'boot' event, where-in it
+creates a C<Window> element and its children.  The application session is
+kept active, handling the user events it has defined, until the users stops
+using it, that is a period of inactivity.  The session is then sent a
+'timeout' event followed by a 'shutdown' event.
+=======
 L<POE::Component::XUL> is an HTTP server that maps all requests to the
 relevant application instance.  It will timeout inactive applications.
+>>>>>>> .merge-right.r1005
 
+<<<<<<< .working
+Because every application stays in-memory for the entire duration of the
+application, you will probably want to set up a HTTP proxy front-end with
+process affinity.  Or be very sure that no POE state blocks.
+=======
 An application instance stays in-memory for the entire duration of the
 application.  There is no saving and loading of the application data for
 each HTTP request.  Because of this, you will probably want to set up a HTTP
 proxy front-end with process affinity.  Or be very sure that no POE state
 blocks.
+>>>>>>> .merge-right.r1005
 
+<<<<<<< .working
+It might also be possible to have multiple L<POE::XUL> applications within
+one session.  Tests needed.
+=======
+>>>>>>> .merge-right.r1005
 
+<<<<<<< .working
+=head2 XUL elements
+=======
 =head2 POE::XUL::Application
+>>>>>>> .merge-right.r1005
 
 POE::XUL applications are a sub-class of L<POE::XUL::Application>, which
 takes care of most of the interaction with the server and provides many

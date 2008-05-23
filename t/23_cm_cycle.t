@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 23_cm_cycle.t 665 2007-12-12 14:10:45Z fil $
+# $Id: 23_cm_cycle.t 1009 2008-05-23 17:03:36Z fil $
 
 use strict;
 use warnings;

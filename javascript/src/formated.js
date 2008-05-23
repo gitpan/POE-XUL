@@ -1,5 +1,5 @@
 // ------------------------------------------------------------------
-// Copyright 2007 Philip Gwyn.  All rights reserved.
+// Copyright 2007-2008 Philip Gwyn.  All rights reserved.
 // ------------------------------------------------------------------
 
 
@@ -568,11 +568,48 @@ FormatedDate.prototype.on_focus = function ( event ) {
 }
 
 // ------------------------------------------------------------------
+FormatedDate.prototype.auto_default = function ( input ) {
+    if( ! input ) {
+        var input = this.input();
+        var rv = this.auto_default( input );
+        if( rv !== undefined )
+            return rv;
+        input = input.parentNode;
+        if( !input )
+            return false;
+        rv = this.auto_default( input )
+        if( rv !== undefined )
+            return rv;
+
+        input = input.parentNode;
+        if( !input )
+            return false;
+        rv = this.auto_default( input )
+        if( rv !== undefined )
+            return rv;
+
+        return false;
+    }
+
+    var ad = input.getAttribute( 'auto-default' );
+    if( !ad ) 
+        return;
+
+//    fb_log( input );
+    if( ad == 'non' || ad == 'no' ) 
+        return false;
+    return true;
+}
+
+// ------------------------------------------------------------------
 // Set the default value
 FormatedDate.prototype.set_default = function () {
-    var input = this.input();
 
+    var input = this.input();
     var value = input.value;
+
+    if( value == '' && ! this.auto_default() ) 
+        return false;
 
     // Get rid of non-number and /
     var re = /[^\/0-9]/g;
@@ -617,7 +654,10 @@ FormatedDate.prototype.set_default = function () {
     }
 
     input.value = value;
-    
+    input.setAttribute( "value", value );
+    input.new_value = value;
+    input.setAttribute( "new_value", value );
+    return true;
 }
 
 // ------------------------------------------------------------------
@@ -631,7 +671,7 @@ FormatedDate.prototype.on_blur = function ( event ) {
     this.set_default();     // build default value
 
     // everything is OK
-    if( ! input.value.match( /^\d\d\/\d\d\/2\d\d\d$/ ) ) {
+    if( this.auto_default() && ! input.value.match( /^\d\d\/\d\d\/2\d\d\d$/ ) ) {
         // NO DON'T GO!
         input.focus();
         this.error_show();
@@ -984,140 +1024,4 @@ FormatedHeure.prototype.on_blur = function ( event ) {
     return true;
 }
 
-
-// ------------------------------------------------------------------
-//  LLxCC
-//  LL -> lines
-//  CC -> columns
-// ------------------------------------------------------------------
-function FormatedArea( id, rows, cols ) {
-    this.rows = rows;
-    this.cols  = cols;
-    FormatedField.call( this, id );
-}
-
-// Inherit from FormatedField
-Object.extend( FormatedArea.prototype, FormatedField.prototype );
-
-// ------------------------------------------------------------------
-FormatedArea.prototype.lines = function ( offset ) {
-    var input = this.input();
-    if( !input ) return 0;
-
-    var value = input.value;
-    if( value == '' ) return 0;         
-    if( offset ) {
-        value = value.substring( 0, offset );
-    }
-
-    value.replace( /\n+$/, '' );
-    var ends = value.match( /\n/g );
-    if( !ends ) 
-        return 1;
-    return 1 + ends.length;
-}
-
-// ------------------------------------------------------------------
-FormatedArea.prototype.line = function ( n ) {
-    var input = this.input();
-    if( !input ) return;
-
-    var value = input.value;
-    if( value == '' ) return;
-
-    value.replace( /\n+$/, '' );
-    var ends = value.split( "\n" );
-    if( !ends ) 
-        return '';
-    return ends[ n ];
-}
-
-// ------------------------------------------------------------------
-FormatedArea.prototype.replace_row = function( n, line )
-{
-    var input = this.input();
-    var lines = input.value.split( "\n" );
-    lines[n] = line;
-    var s = input.selectionStart;
-    var e = input.selectionEnd;
-    input.value = lines.join( "\n" );
-    input.selectionStart = s;
-    input.selectionEnd = e;
-}
-
-
-// ------------------------------------------------------------------
-FormatedArea.prototype.validate = function ( on_submit ) {
-    var input = this.input();
-
-    if( this.required && on_submit && input.value == '' )
-        return false;
-
-    var rows = this.lines();
-    if( rows > this.rows ) 
-        return false;
-
-    for( var q=0 ; q<rows ; q++ ) {
-        if( this.line( q ).length > this.cols )
-            return false;
-    }
-
-    return true;
-}
-
-
-// ------------------------------------------------------------------
-FormatedArea.prototype.keypress = function ( event ) {
-
-    var rows = this.lines();
-    if( rows > this.rows )        // too many lines already
-        return false;
-
-    var k = this.get_key( event );
-    if( k == 0 ) {
-        return true;
-    }
-    if( ! this.valid_key( k ) ) {
-        return false;
-    }
-
-    var input = this.input();
-
-    if( ! this.is_append() ) {
-        var at_row = this.lines( input.selectionStart )-1;
-        var current = this.line( at_row );
-        var offset = 0;
-        for( q=0 ; q < at_row ; q++ ) {
-            offset += 1 + this.line( q ).length;
-        }
-        var row_offset = input.selectionStart - offset;
-        if( ! this.is_substitution() ) {
-            // alert( "insert" );
-            if( row_offset >= this.cols ) {     // at end of row
-                input.selectionStart =          // move past the newline
-                    input.selectionEnd += 1;
-                at_row++;
-                current = this.line( at_row );
-            }
-            if( current && current.length >= this.cols ) {
-                this.replace_row( at_row, current.substr2( current.length-1, 1, '' ));
-            }
-        }
-    }
-    else {
-        var last = this.line( rows-1 );
-        if( last && last.length >= this.cols ) {
-            // append, but got to the end of a line
-
-            if( rows == this.rows )         // don't allow anything more
-                return false;
-
-            // move to next line
-            // TODO: word wrap
-            this.insert_key( "\n".charCodeAt() );
-        }
-    }
-
-    return true;
-}
 

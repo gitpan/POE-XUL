@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 10_node.t 340 2007-03-30 00:31:33Z fil $
+# $Id: 10_node.t 969 2008-05-17 09:23:28Z fil $
 
 use strict;
 use warnings;
@@ -7,7 +7,7 @@ use warnings;
 use POE::XUL::Node;
 use POE::XUL::Constants;
 
-use Test::More ( tests=> 77 );
+use Test::More ( tests=> 82 );
 
 my @tags = qw( 
     ArrowScrollBox Box Button Caption CheckBox ColorPicker Column Columns
@@ -112,3 +112,23 @@ $I = $lb->get_item( 0 );
 ok( $I, "Got a listitem" );
 is( $I->firstChild->label, 'Pearl', " ... and it's Pearl" );
 
+##########################
+$lb->hide();
+ok( ($lb->style =~ /display: none/), "Hidden" );
+$lb->hide();
+my @m=($lb->style =~ /display: none/g);
+is( 0+@m, 1, " ... only once" );
+
+$lb->style( "display:none;" );
+$lb->hide;
+@m=($lb->style =~ /display: *none/g);
+is( 0+@m, 1, " ... only once" );
+
+$lb->show;
+@m=($lb->style =~ /display: *none/g);
+is( 0+@m, 0, "Shown" );
+
+$lb->style( "display:none;" );
+$lb->show;
+@m=($lb->style =~ /display: *none/g);
+is( 0+@m, 0, "Shown" );

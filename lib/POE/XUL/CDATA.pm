@@ -1,5 +1,5 @@
 package POE::XUL::CDATA;
-# $Id: CDATA.pm 664 2007-12-11 22:25:08Z fil $
+# $Id: CDATA.pm 1009 2008-05-23 17:03:36Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 
 use strict;

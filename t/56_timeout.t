@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 56_timeout.t 664 2007-12-11 22:25:08Z fil $
+# $Id: 56_timeout.t 1009 2008-05-23 17:03:36Z fil $
 
 use strict;
 use warnings;
@@ -110,7 +110,7 @@ $resp = Click( $browser, $B1 );
 ok( !$resp->is_success, "Failed the request" );
 ok( ($resp->content =~ /$browser->{SID}/), " ... the session" );
 is( $resp->code, 410, " ... it's gone" );
-ok( ($resp->content =~ /Session inexistante/), " ... is timed-out" );
+ok( ($resp->content =~ /(Session|Program) inexistante?/), " ... is timed-out" );
 
 
 ############################################################

@@ -433,7 +433,6 @@ FormatedInput.prototype.insert_key = function ( key ) {
     var pos0 = input.selectionStart;
     var pos1 = input.selectionEnd;
     // window.status = "pos0="+pos0.toString()+ " pos1=" + pos1.toString() +  " value=" + input.value + " key=" + key;
-
     input.value = input.value.substring2( pos0, pos1, key );
     // move after new char
     input.selectionStart = input.selectionEnd = ++pos0;

@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-# $Id: 00_compile.t 666 2007-12-12 23:52:44Z fil $
+# $Id: 00_compile.t 1009 2008-05-23 17:03:36Z fil $
 
 use strict;
 use warnings;

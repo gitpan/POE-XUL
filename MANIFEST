@@ -42,7 +42,6 @@ javascript/test/unit/textarea.html
 javascript/test/unit/util.html
 lib/POE/Component/XUL.pm
 lib/POE/XUL.pm
-lib/POE/XUL/Application.pm
 lib/POE/XUL/CDATA.pm
 lib/POE/XUL/ChangeManager.pm
 lib/POE/XUL/Constants.pm
@@ -51,9 +50,9 @@ lib/POE/XUL/Event.pm
 lib/POE/XUL/Javascript.pm
 lib/POE/XUL/Logging.pm
 lib/POE/XUL/Node.pm
+lib/POE/XUL/Style.pm
 lib/POE/XUL/Request.pm
 lib/POE/XUL/State.pm
-lib/POE/XUL/Session.pm
 lib/POE/XUL/TextNode.pm
 lib/POE/XUL/TWindow.pm
 lib/POE/XUL/Window.pm
@@ -67,6 +66,7 @@ eg/windows2.pl
 t/00_compile.t
 t/10_node.t
 t/11_mixedmode.t
+t/12_style.t
 t/20_changemanager.t
 t/21_cm_instructions.t
 t/22_cm_leaks.t

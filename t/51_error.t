@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 51_error.t 664 2007-12-11 22:25:08Z fil $
+# $Id: 51_error.t 1009 2008-05-23 17:03:36Z fil $
 
 use strict;
 use warnings;
@@ -57,8 +57,13 @@ $URI = $browser->Click_uri( { id=>'1234' } );
 $resp = $UA->get( $URI );
 
 is( $resp->code, 410, "Session is gone" );
-ok( ($resp->content =~ /honk-honk/), "Can't find the session" )
+my $C = $resp->content;
+ok( ($C =~ /honk-honk/), "Can't find the session" )
         or warn $resp->content;
+
+ok( ($C =~ m(a href="http://[-.\w]+:8881/start\.xul\?Test") ),
+        "Link to start a new session" )
+            or die $C;
 
 ############################################################
 # Request, but a bad mime-type
@@ -66,7 +71,7 @@ $browser = t::Client->new( APP=>'Test' );
 $URI = $browser->base_uri;
 my $req = HTTP::Request->new( POST => $URI );
 $req->content_type( 'text/html' );
-my $C = <<HTML;
+$C = <<HTML;
 <html><body><p>this is some HTML</p></body></html>
 HTML
 $req->content_length( length $C );

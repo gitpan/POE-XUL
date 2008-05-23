@@ -1,6 +1,6 @@
 package 
     POE::XUL::ChangeManager;
-# $Id: ChangeManager.pm 666 2007-12-12 23:52:44Z fil $
+# $Id: ChangeManager.pm 1009 2008-05-23 17:03:36Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
@@ -68,6 +68,7 @@ sub build_json
 {
     my( $self ) = @_;
     my $coder = JSON::XS->new->space_after( 1 );
+    $coder->ascii;
     $self->{json_coder} = $coder;
 }
 
@@ -88,6 +89,7 @@ sub json_encode
 		do {
 			my $foo = $json;
 			$foo =~ s/], /],\n/g;
+			use bytes;
 			xdebug "JSON: $foo\n";
             xdebug "JSON size: ", length( $json ), "\n";
         };
@@ -146,9 +148,11 @@ sub flush
 sub flush_node 
 {
 	my ($self, $node) = @_;
-    return unless $node;
+    return unless $node and blessed $node;
     my $state = $self->node_state( $node );
-	my @out = $state->flush;
+    return unless $state and blessed $state;
+	my @out = ( # "# $node\n", 
+                $state->flush );
     unless( $state->{is_framify} ) {
         push @out, $self->flush_node( $_ ) foreach $node->children;
     }
@@ -224,7 +228,7 @@ sub register_node
 {
     my( $self, $id, $node ) = @_;
     
-    if( $self->{nodes}{$id} ) {
+    if( $self->{nodes}{$id} and not $self->{nodes}{$id}{disposed} ) {
         confess "I already have a node id=$id";
     }
     confess "Why you trying to be funny with me?" unless $node;
@@ -260,6 +264,8 @@ sub after_destroy
     my $id;
     if( $state ) {
         $id = $state->{id};
+        delete $self->{states}{ $state->{style} }
+                                if $state->{style};
     }
     elsif( $node->can( 'id' ) ) {
         $id = $node->id;
@@ -292,6 +298,7 @@ sub after_set_attribute
     }
     else {
         $state->set_attribute($key, $value);
+        # TODO: track exclusive things like focus()
     }
 
 }
@@ -300,9 +307,33 @@ sub after_set_attribute
 sub after_remove_attribute
 {
     my( $self, $node, $key ) = @_;
-    my $state   = $self->node_state( $node );
+    my $state = $self->node_state( $node );
 
+    delete $self->{states}{ $state->{style} } if $key eq 'style' and
+                                                 $state->{style};
     $state->remove_attribute( $key );
+}
+
+##############################################################
+sub after_new_style
+{
+    my( $self, $node ) = @_;
+	my $state = $self->node_state($node);
+    delete $self->{states}{ $state->{style} }
+                if $state->{style};
+    my $style = $node->get_style;
+    $state->{style} = 0+$style;
+    $self->{states}{ $state->{style} } = $state;
+    $state->set_attribute( style => "$style" );
+    return;
+}
+
+##############################################################
+sub after_style_change
+{
+    my( $self, $style, $property, $value ) = @_;
+    my $state = $self->{states}{ 0+$style };
+    $state->style_change( $property, $value );
 }
 
 ##############################################################
@@ -314,6 +345,14 @@ sub before__add_child_at_index
 	$child_state->{parent} = $self->node_state( $parent );
     weaken $child_state->{parent};
 	$child_state->{index} = $index;
+
+    return unless @{$child->{children} || []};
+
+    my $n = 0;
+    foreach my $subchild ( @{ $child->{children} } ) {
+        $self->before__add_child_at_index( $child, $subchild, $n );
+        $n++;
+    }
 }
 
 ##############################################################
@@ -329,6 +368,8 @@ sub before_remove_child
 	push @{$self->{destroyed}}, $child_state;
 
     delete $self->{states}{ "$child" };
+    delete $self->{states}{ $child_state->{style} }
+                            if $child_state->{style};
     $self->unregister_node( $child_state->{id}, $child );
 }
 
@@ -439,7 +480,7 @@ sub json_response
     DEBUG and 
         xdebug "Response=$json";
 
-    $resp->content_type( 'application/json' ); #; charset=utf8' );
+    $resp->content_type( 'application/json' ); #; charset=UTF-8' );
     $self->__response( $resp, $json );
 }
 
@@ -460,7 +501,9 @@ sub __response
     do {
         # HTTP exptects content-length to be number of octets, not chars
         # The UTF-8 that JSON::XS is producing was screwing up length()
+        # xwarn "chars=", length $content;
         use bytes;
+        # xwarn "bytes=", length $content;
         $resp->content_length( length $content );
     };
     $resp->content( $content );

@@ -1,5 +1,5 @@
 // ------------------------------------------------------------------
-// Copyright 2007 Philip Gwyn.  All rights reserved.
+// Copyright 2007-2008 Philip Gwyn.  All rights reserved.
 //
 // Allow multi-key selection of elements in a menulist.
 // ------------------------------------------------------------------

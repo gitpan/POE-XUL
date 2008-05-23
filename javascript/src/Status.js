@@ -1,5 +1,5 @@
 // ------------------------------------------------------------------
-// Copyright 2007 Philip Gwyn.  All rights reserved.
+// Copyright 2007-2008 Philip Gwyn.  All rights reserved.
 // ------------------------------------------------------------------
 
 var $status;
@@ -22,6 +22,8 @@ _.element = function () {
     var el = $( 'POEXUL-Status' );
     if( el && el.setTitle )
         return el;
+    else 
+        fb_log( "Can't find POEXUL-Status" );
     return;
 }
 

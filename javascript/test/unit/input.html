@@ -450,6 +450,47 @@ new Test.Unit.Runner({
     }},
 
     // --------------------------------------------------------------
+    testDate: function() { with(this) {
+        var fi = new FormatedDate( 'hello' );
+        assert( fi );
+        assertInstanceOf( FormatedDate, fi );
+
+        var E = fi.input();
+        assertNotNull( E, "Got the input" );
+
+        E.value = '';
+        var e = mk_event( '1' );
+        var def = fi.keypress( e );
+        assertEqual( false, def, "Not default 1" );
+
+        var now = new Date();
+        var day = (now.getDay());
+        if( day < 10 ) {
+            day = "0" + day;
+        }
+        var month = (1+now.getMonth());
+        if( month < 10 ) {
+            month = "0" + month;
+        }
+        var year = now.getFullYear();
+
+        fi.set_default();
+        assertEqual( '01/' + month + '/' + year, E.value, 
+                                        "Default to this month" );
+
+        E.value = '';
+        fi.set_default();
+        assertEqual( '', E.value, "No default" );
+
+        E.setAttribute( 'auto-default', 1 );
+        E.value = '';
+        fi.set_default();
+
+        assertEqual( now.getDate() + '/' + month + '/' + year, 
+                     E.value, "Default to today" );
+    }},
+
+    // --------------------------------------------------------------
     test_last: function() {
         Element.hide( $( "formated" ) );
         this.assertNotVisible( $( 'formated' ) );

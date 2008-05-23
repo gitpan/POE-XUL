@@ -1,5 +1,5 @@
 package POE::XUL::Event;
-# $Id: Event.pm 666 2007-12-12 23:52:44Z fil $
+# $Id: Event.pm 1009 2008-05-23 17:03:36Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 

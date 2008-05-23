@@ -1,5 +1,5 @@
 package POE::XUL::Node;
-# $Id: Node.pm 666 2007-12-12 23:52:44Z fil $
+# $Id: Node.pm 1009 2008-05-23 17:03:36Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
@@ -12,6 +12,7 @@ use Scalar::Util qw( blessed );
 use POE::XUL::Constants;
 use POE::XUL::TextNode;
 use POE::XUL::CDATA;
+use POE::XUL::Style;
 use POE::XUL::Window;
 use Scalar::Util qw( blessed );
 use HTML::Entities qw( encode_entities_numeric );
@@ -51,7 +52,6 @@ my @OTHER_ELEMENTS = qw(
 my %LOGICAL_ATTS = ( 
         selected => 1, 
         disabled => 1, 
-        flex => 1,
         autoFill => 1,
         autocheck => 1,
 #        checked => 1
@@ -212,7 +212,6 @@ sub textNode
     unless( 2==@_ ) {
         return unless $old;
         return $old->nodeValue;
-        return;
     }
 
     if( $old and ref $text ) {
@@ -264,6 +263,7 @@ sub attributes
 sub get_attribute 
 { 
     my( $self, $key ) = @_;
+    return $self->style if $key eq 'style';
     return $self->{attributes}{$key};
 }
 *getAttribute = \&get_attribute;
@@ -273,12 +273,11 @@ sub get_attribute
 sub set_attribute 
 {
     my( $self, $key, $value ) = @_;
+    return $self->style( $value ) if $key eq 'style';
     if( $key eq 'tag' ) {
         $value = lc $value;
         $value =~ s/^html_/html:/;
-        if( $value eq 'window' and 0 ) {
-            $self = bless $self, 'POE::XUL::Window';
-        }
+        $value =~ s/^xul://;
     }
 
     if( $LOGICAL_ATTS{ $key } ) {
@@ -333,6 +332,42 @@ sub __mk_accessor
 }
 
 ##############################################################
+sub style {
+    my( $self, $value ) = @_;
+    if( 1==@_ ) {
+        return $self->get_style;
+    }
+    else {
+        return $self->set_style( $value );
+    }
+}
+
+sub get_style
+{
+    my( $self ) = @_;
+    return $self->{style_obj} if $self->{style_obj};
+    $self->{style_obj} = POE::XUL::Style->new( $self->{attributes}{style} );
+    $CM->after_new_style( $self ) if $CM;
+    return $self->{style_obj};
+}
+
+sub set_style
+{
+    my( $self, $value ) = @_;
+    $self->{attributes}{style} = "$value";
+    if( blessed $value ) {
+        $self->{style_obj} = $value;
+        $CM->after_new_style( $self ) if $CM;
+    }
+    else {
+        delete $self->{style_obj};
+        # do the following to provoke a ->after_new_style();
+        $self->get_style;
+    }
+    return;
+}
+
+##############################################################
 sub AUTOLOAD {
 	my( $self, $value ) = @_;
 	my $key = our $AUTOLOAD;
@@ -357,20 +392,21 @@ sub AUTOLOAD {
 sub hide 
 {
     my( $self ) = @_;
-    my $css = $self->style||'';
-    $css .= "display: none;";
-    $self->style( $css );
+    $self->style->display( 'none' );
 }
 
 ##############################################################
 sub show
 {
     my( $self ) = @_;
-    my $css = $self->style||'';
-    $css =~ s/display: none;//;
-    $self->style( $css );
+    $self->style->display( '' );
 }
 
+sub hidden
+{
+    my( $self ) = @_;
+    return $self->style->display eq 'none';
+}
 
 # compositing -----------------------------------------------------------------
 
@@ -491,6 +527,16 @@ sub _add_child_at_index {
 	return $child;
 }
 
+##############################################################
+sub getElementById
+{
+    my( $self, $id ) = @_;
+    return $id if blessed $id;      # act like prototype's $()
+    croak "getElementById may only be invoked on a Window"
+            unless $self->is_window;
+    return $CM->getElementById( $id );
+}
+
 # event handling --------------------------------------------------------------
 
 sub attach { 
@@ -533,6 +579,8 @@ sub event {
 # event handlers could cause reference cycles, so we free them manually
 sub dispose {
 	my $self = shift;
+    $self->{disposed} = 1;
+    delete $self->{style_obj};
 	$_->dispose for grep { blessed $_ } $self->children;
 	delete $self->{events};
     $self->{children} = [];
@@ -766,7 +814,16 @@ Events are removed with the L</detach> method:
 
     $button->detach( 'Click' );
 
-=head2 XUL-Node API vs. the Javascript XUL API
+=head2 Style
+
+An element's style property is implemented by a L<POE::XUL::Style> object, 
+which allows DOM-like manipulation of the element's style declaration.
+
+    my $button = Button( style=>'color: red' );
+    $button->style->color( 'puce' );
+
+
+=head2 XUL-Node API vs. the XUL DOM
 
 The XUL-Node API is different in the following ways:
 
@@ -774,7 +831,7 @@ The XUL-Node API is different in the following ways:
 
 =item *
 
-Booleans are Perl booleans.
+Booleans are Perl booleans, not C<true> and C<false>.
 
 =item *
 
@@ -800,8 +857,12 @@ C<selectedIndex>).
 
 =item *
 
-There exist constants for common attribute key/value pairs. See
-L<POE::XUL::Node>.
+You currently can not move nodes around in the DOM.
+
+    my $node = $parent->getChild( 3 );
+    my $new_node = Description( content => $node );
+    $parent->removeChild( 3 );
+    $parent->appendChild( $new_node );      # FAIL!
 
 =back
 
@@ -944,21 +1005,21 @@ mirrored in the DOM node.
 
     $node->hide;
 
-Syntatic sugar that adds C<display: none> to the style attribute.
+Syntatic sugar that does the following:
+
+    $node->style->display( 'none' );
 
 =head2 show
 
     $node->show;
 
-Syntatic sugar that removes C<display: none> from the style attribute.
+Syntatic sugar that does the following:
 
-=head2 close
-
-Close a sub-window.  Obviously may only be called on a Window element.
+    $node->style->display( '' );
 
 =head2 attach
 
-    $node->attach( $Event [ => $poe_event ] );
+    $node->attach( $Event => $listener );
     $node->attach( $Event => $coderef );
     $node->attach( $Event );
 
@@ -1011,6 +1072,15 @@ Some DOM features are not supported yet:
   * color picker will not fire events if type is set to button
   * equalsize attribute will not work
   * menus with no popups may not show
+
+=item *
+
+Some XUL properties are implemented with XBL.  The front-end attempts to
+wait for the XBL to be created before setting the property.  If the object
+takes too long, the attribute is set instead.
+
+What this means is that you can't reliably set the properties of freshly
+created nodes.
 
 =back
 

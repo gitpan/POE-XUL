@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 50_poe.t 664 2007-12-11 22:25:08Z fil $
+# $Id: 50_poe.t 1009 2008-05-23 17:03:36Z fil $
 
 use strict;
 use warnings;

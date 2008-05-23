@@ -1,5 +1,5 @@
 package POE::XUL::Controler;
-# $Id: Controler.pm 666 2007-12-12 23:52:44Z fil $
+# $Id: Controler.pm 1009 2008-05-23 17:03:36Z fil $
 #
 # Copyright Philip Gwyn / Awalé 2007.  All rights reserved.
 #
@@ -164,7 +164,9 @@ sub boot
     unless( ref $A ) {
         $A = $self->package_build( $A );
     }
-     
+
+#    use Data::Dumper;
+#    xlog "A=", Dumper $A;     
     my $CM = $self->build_change_manager();
 
     my $event = $self->build_event( 'boot', $CM, $resp );
