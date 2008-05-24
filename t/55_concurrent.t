@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 55_concurrent.t 1009 2008-05-23 17:03:36Z fil $
+# $Id: 55_concurrent.t 1022 2008-05-23 20:01:38Z fil $
 
 use strict;
 use warnings;
@@ -228,7 +228,7 @@ our $perl;
 BEGIN {
     *DEBUG = \&main::DEBUG;
     *diag  = \&main::diag;
-    $perl = $Config{perl5} || $Config{perlpath};
+    $perl = $^X || $Config{perl5} || $Config{perlpath};
 
     if( $ENV{HARNESS_PERL_SWITCHES} ) {
         $perl .= " $ENV{HARNESS_PERL_SWITCHES}";
@@ -257,7 +257,13 @@ sub _start
     $self->{alias} = 'server';
     $kernel->alias_set( $self->{alias} );
 
-    my $prog = "$perl -Iblib/lib t/test-app.pl $self->{port} t-tmp";
+    my $inc = join ' ', map { "-I$_" } qw( blib/lib
+                                           ../widgets/blib/lib
+                                           ../httpd/blib/lib
+                                            ../PRO5/blib/lib
+                                          ), @INC;
+    my $prog = "$perl $inc t/test-app.pl $self->{port} t-tmp";
+    diag "POE=$INC{'POE.pm'}";
     diag "prog=$prog";
     $self->{wheel} = POE::Wheel::Run->new( 
             Program    => $prog,
