@@ -17,9 +17,9 @@ POE::Component::XUL->spawn( {
         }
     } );
 
-warn "# http://localhost:$port\n";
+warn "# http://localhost:$port\n" unless $ENV{AUTOMATED_TESTING};
 $poe_kernel->run();
-warn "# exit";
+warn "# exit" unless $ENV{AUTOMATED_TESTING};
 
 #############################################################################
 package My::Application;

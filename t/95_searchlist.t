@@ -18,6 +18,7 @@ use t::Server;
 
 ############################################################
 my $Q = 5;
+$Q *= 3 if $ENV{AUTOMATED_TESTING};
 
 if( $ENV{HARNESS_PERL_SWITCHES} ) {
     $Q *= 3;
@@ -29,7 +30,7 @@ my $pid = t::Server->spawn( $browser->{PORT} );
 END { kill 2, $pid if $pid; }
 
 
-diag( "sleep $Q" );
+diag( "sleep $Q" ) unless $ENV{AUTOMATED_TESTING};
 sleep $Q;
 
 my $UA = LWP::UserAgent->new;

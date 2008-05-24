@@ -1,7 +1,7 @@
 package POE::XUL::Controler;
-# $Id: Controler.pm 1009 2008-05-23 17:03:36Z fil $
+# $Id: Controler.pm 1023 2008-05-24 03:10:20Z fil $
 #
-# Copyright Philip Gwyn / Awalé 2007.  All rights reserved.
+# Copyright Philip Gwyn / Awalé 2007-2008.  All rights reserved.
 #
 
 use strict;

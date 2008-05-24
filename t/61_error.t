@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 61_error.t 509 2007-09-12 07:20:01Z fil $
+# $Id: 61_error.t 1023 2008-05-24 03:10:20Z fil $
 
 use strict;
 use warnings;
@@ -21,6 +21,7 @@ use t::Server;
 
 ################################################################
 my $Q = 5;
+$Q *= 3 if $ENV{AUTOMATED_TESTING};
 
 if( $ENV{HARNESS_PERL_SWITCHES} ) {
     $Q *= 3;
@@ -30,13 +31,15 @@ my $browser = t::Client->new();
 my $pid = t::Server->spawn( $browser->{PORT} );
 END { kill 2, $pid if $pid; }
 
-diag( "" );
-diag( "" );
-diag( "We are testing several error conditions.  Because of this you are" );
-diag( "going to see some error messages.  These may be ignored" );
-diag( "" );
+unless( $ENV{AUTOMATED_TESTING} ) {
+    diag( "" );
+    diag( "" );
+    diag( "We are testing several error conditions.  Because of this you are" );
+    diag( "going to see some error messages.  These may be ignored" );
+    diag( "" );
+}
 
-diag( "sleep $Q" );
+diag( "sleep $Q" ) unless $ENV{AUTOMATED_TESTING};
 sleep $Q;
 
 my $UA = LWP::UserAgent->new;

@@ -1,6 +1,6 @@
 package POE::XUL::Node;
-# $Id: Node.pm 1009 2008-05-23 17:03:36Z fil $
-# Copyright Philip Gwyn 2007.  All rights reserved.
+# $Id: Node.pm 1023 2008-05-24 03:10:20Z fil $
+# Copyright Philip Gwyn 2007-2008.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
 
@@ -410,7 +410,8 @@ sub hidden
 
 # compositing -----------------------------------------------------------------
 
-sub children    { wantarray? @{shift->{children}}: shift->{children} }
+sub children    { wantarray? @{shift->{children}}: 
+                             [@{shift->{children}}] }
 sub child_count { scalar @{shift->{children}} }
 sub hasChildNodes { return 0!= scalar @{shift->{children}} }
 sub first_child { shift->{children}->[0] }
@@ -480,7 +481,7 @@ sub remove_child {
 	my ($child, $index) = $self->_compute_child_and_index($something);
 
     unless( $child and $index < @{ $self->{children} } ) {
-        Carp::carp "Attempt to remove an unknown child node";
+        Carp::carp "Attempt to remove an unknown child node" unless $ENV{AUTOMATED_TESTING};
         return;
     }
 
@@ -763,10 +764,15 @@ for an explanation of available elements and their attributes.
 
 
 
-Events are removed with the L</detach> method:
+=head2 The id attribute
 
-    $button->detach( 'Click' );
+POE::XUL requires each node to have a unique identifier.  If you
+do not set the C<id> attribute of an node, it will assigned one.  A
+node's C<id> attribute must be globally to the application, including across
+windows in the same application.  This is contrary to how the DOM works,
+where elements in different windows may share an id, may even not have one.
 
+Use <POE::XUL::Window/getElementById> to find a node by its C<id>.
 
 
 =head2 Events
@@ -938,11 +944,40 @@ See L<POE::XUL::ChangeManager/instrction> for details.
 =head1 METHODS
 
 =head2 createTextNode
+
+Creates and populates a L<POE::XUL::TextNode>.  Returns the new node.
+
+    my $tn = window->createTextNode( 'Some text' );
+
 =head2 textNode
 
+Sets or changes the text of a node, such as
+L<description|http://developer.mozilla.org/en/docs/XUL:description>. If the
+node has multiple children (aka <i>mixed-mode</i>) then it will replace the
+first textNode it finds.  If there are none, it will append a new text node.
+See L<POE::XUL::TextNode>.
+
+    my $d = Description( textNode => 'Hello world!' );
+    $d->textNode( 'This is different' );
+
+
 =head2 children
+
+Find a given node's child nodes.  Returns array in array context, an array
+reference in scalar context.  Modifying the arrayref will NOT modify the
+node's list of children.
+
+    foreach my $node ( $box->children ) {
+        # ...
+    }
+
 =head2 child_count
+
+Returns the number of child nodes of an node.
+
 =head2 hasChildNodes
+
+Returns true if a node has child nodes.
 
 =head2 add_child
 
@@ -959,6 +994,8 @@ See L<POE::XUL::ChangeManager/instrction> for details.
 =head2 get_child
 
     my $node = $parent->get_child( $index );
+
+Use <POE::XUL::Window/getElementById> to find a node by its C<id>.
 
 =head2 getItemAtIndex / get_item
 
@@ -1104,7 +1141,7 @@ Based on work by Ran Eilam.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
 
 Copyright 2003-2004 Ran Eilam. All rights reserved.
 

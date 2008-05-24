@@ -1,6 +1,6 @@
 package POE::XUL::TWindow;
 # $Id$
-# Copyright Philip Gwyn 2007.  All rights reserved.
+# Copyright Philip Gwyn 2007-2008.  All rights reserved.
 
 use strict;
 use warnings;

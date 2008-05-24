@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 55_concurrent.t 1022 2008-05-23 20:01:38Z fil $
+# $Id: 55_concurrent.t 1023 2008-05-24 03:10:20Z fil $
 
 use strict;
 use warnings;
@@ -13,6 +13,7 @@ use t::PreReq;
 use constant DEBUG=>0;
 
 my $Q = 5;
+$Q *= 3 if $ENV{AUTOMATED_TESTING};
 my $N = 10;
 
 t::PreReq::load( $N, qw( POE::Component::Client::HTTP 
@@ -38,7 +39,7 @@ foreach my $n ( 1..$N ) {
 
 My::Server->spawn( $UA[0]{browser}{PORT} );
 
-diag( "sleep $Q" );
+diag( "sleep $Q" ) unless $ENV{AUTOMATED_TESTING};
 sleep $Q;
 
 $poe_kernel->run;
@@ -257,14 +258,14 @@ sub _start
     $self->{alias} = 'server';
     $kernel->alias_set( $self->{alias} );
 
-    my $inc = join ' ', map { "-I$_" } qw( blib/lib
-                                           ../widgets/blib/lib
-                                           ../httpd/blib/lib
-                                            ../PRO5/blib/lib
-                                          ), @INC;
-    my $prog = "$perl $inc t/test-app.pl $self->{port} t-tmp";
-    diag "POE=$INC{'POE.pm'}";
-    diag "prog=$prog";
+    $ENV{PERL5LIB} = join ':', qw( blib/lib
+                                   ../widgets/blib/lib
+                                   ../httpd/blib/lib
+                                   ../PRO5/blib/lib
+                                 ), @INC;
+    my $prog = "$perl t/test-app.pl $self->{port} t-tmp";
+    # diag "POE=$INC{'POE.pm'}";
+    # diag "prog=$prog";
     $self->{wheel} = POE::Wheel::Run->new( 
             Program    => $prog,
             ErrorEvent => 'error',
@@ -296,8 +297,9 @@ sub stdout
 sub stderr
 {
     my( $self, $kernel, $text ) = @_[ OBJECT, KERNEL, ARG0 ];
+    # we need this to see if the prog didn't start
     # DEBUG and 
-        diag( "STDERR $text" ); # we need this to see if the prog didn't start
+        diag( "STDERR $text" ); 
 }
 
 sub error

@@ -1,6 +1,7 @@
-package POE::XUL::Session;
+package                     # Hide from the CPAN indexer
+    POE::XUL::Session;
 # $Id$
-# Copyright Philip Gwyn 2007.  All rights reserved.
+# Copyright Philip Gwyn 2007-2008.  All rights reserved.
 
 use strict;
 use warnings;
@@ -505,7 +506,7 @@ Philip Gwyn E<lt>gwyn-at-cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.
@@ -514,7 +515,7 @@ it under the same terms as Perl itself.
 =head1 SEE ALSO
 
 perl(1), L<POE::XUL>, L<POE::XUL::Event>, L<POE::XUL::Node>, 
-L<POE::XUL::Session>.
+L<POE::XUL::Application>.
 
 L<http://www.prototypejs.org/>.
 

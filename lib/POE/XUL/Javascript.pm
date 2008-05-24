@@ -1,6 +1,6 @@
 package POE::XUL::Javascript;
 # $Id$
-# Copyright Philip Gwyn 2007.  All rights reserved.
+# Copyright Philip Gwyn 2007-2008.  All rights reserved.
 
 
 1;
@@ -43,6 +43,10 @@ This documentation needs to be written
 
     fb_log( "Short message for firebox's console" );
 
+Sends a message to the most excelent
+L<Firebug|https://addons.mozilla.org/en-US/firefox/addon/1843> debugging
+extension.  You probably don't want to be writing XBL without Firebug.
+
 =head1 LIBRARIES
 
 =head2 prototype.js
@@ -61,7 +65,7 @@ Based on XUL::Node by Ran Eilam.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
 
 Copyright 2003-2004 Ran Eilam. All rights reserved.
 

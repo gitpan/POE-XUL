@@ -23,14 +23,12 @@ sub spawn
     return $pid if $pid;
     $root ||= 'poe-xul';
     $prog ||= 't/test-app.pl';
-    warn "POE is in $INC{'POE.pm'}";
-    warn "perl=$perl";
-    my $inc = join ' ', map { "-I$_" } qw( blib/lib
+    local $ENV{PERL5LIB} = join ':', qw( blib/lib
                                            ../widgets/blib/lib
                                            ../httpd/blib/lib
                                             ../PRO5/blib/lib
                                           ), @INC;
-    exec( "$perl $inc $prog $port $root" ) or die $!;
+    exec( "$perl $prog $port $root" ) or die $!;
 }
 
 1;

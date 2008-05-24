@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 60_static.t 655 2007-12-07 14:56:45Z fil $
+# $Id: 60_static.t 1023 2008-05-24 03:10:20Z fil $
 
 use strict;
 use warnings;
@@ -22,6 +22,7 @@ use t::Server;
 
 ################################################################
 my $Q = 5;
+$Q *= 3 if $ENV{AUTOMATED_TESTING};
 
 if( $ENV{HARNESS_PERL_SWITCHES} ) {
     $Q *= 3;
@@ -31,7 +32,7 @@ my $browser = t::Client->new();
 my $pid = t::Server->spawn( $browser->{PORT}, 'poe-xul' );
 END { kill 2, $pid if $pid; }
 
-diag( "sleep $Q" );
+diag( "sleep $Q" ) unless $ENV{AUTOMATED_TESTING};
 sleep $Q;
 
 my $UA = LWP::UserAgent->new;

@@ -18,10 +18,10 @@ POE::Component::XUL->spawn( {
         }
     } );
 
-warn "# http://localhost:$port";
+warn "# http://localhost:$port" unless $ENV{AUTOMATED_TESTING};
 $poe_kernel->run();
 
-warn "# exit";
+warn "# exit" unless $ENV{AUTOMATED_TESTING};
 
 ###############################################################
 package My::App;
@@ -66,7 +66,7 @@ sub shutdown
 sub _stop
 {
     my( $self, $kernel ) = @_[ OBJECT, KERNEL ];
-    warn "# _stop";
+    warn "# _stop" unless $ENV{AUTOMATED_TESTING};
 }
 
 ###############################################################

@@ -1,6 +1,6 @@
 package 
     POE::Component::XUL;
-# $Id: XUL.pm 1009 2008-05-23 17:03:36Z fil $
+# $Id: XUL.pm 1023 2008-05-24 03:10:20Z fil $
 # Copyright Philip Gwyn 2007.  All rights reserved.
 
 use strict;
@@ -748,7 +748,8 @@ sub error
 
     $ct ||= 'text/plain';
 
-    warn "$code $text\n";       # This could get annoying fast.  It also shows 404s
+    # This could get annoying fast.  It also shows 404s
+    warn "$code $text\n" unless $ENV{AUTOMATED_TESTING}; 
     xlog "$code $text\n"
                 if $ct eq 'text/plain' and (DEBUG or $code != RC_NOT_FOUND);
 

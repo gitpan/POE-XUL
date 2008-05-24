@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 20_changemanager.t 1009 2008-05-23 17:03:36Z fil $
+# $Id: 20_changemanager.t 1023 2008-05-24 03:10:20Z fil $
 
 use strict;
 use warnings;
@@ -162,7 +162,7 @@ is_deeply( $buffer, [[ 'for', '' ],
     or die Dumper $buffer;
 
 ## No-op
-diag( "The following warning about an unknown child may be ignored" );
+diag( "The following warning about an unknown child may be ignored" ) unless $ENV{AUTOMATED_TESTING};
 $W->removeChild( 1 );
 
 $buffer = $CM->flush;

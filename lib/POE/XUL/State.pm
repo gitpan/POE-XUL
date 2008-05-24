@@ -1,6 +1,6 @@
 package POE::XUL::State;
-# $Id: State.pm 1009 2008-05-23 17:03:36Z fil $
-# Copyright Philip Gwyn 2007.  All rights reserved.
+# $Id: State.pm 1023 2008-05-24 03:10:20Z fil $
+# Copyright Philip Gwyn 2007-2008.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
 #

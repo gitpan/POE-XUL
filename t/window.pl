@@ -17,9 +17,9 @@ POE::Component::XUL->spawn( {
         }
     } );
 
-warn "# http://localhost:$port\n";
+warn "# http://localhost:$port\n" unless $ENV{AUTOMATED_TESTING};
 $poe_kernel->run();
-warn "# exit";
+warn "# exit" unless $ENV{AUTOMATED_TESTING};
 
 #############################################################################
 package My::Application;
@@ -101,7 +101,8 @@ sub xul_Connect_sub_window_1
     window->appendChild( Description( 'honk' ) );
 
     $win->appendChild( Description( "This is ".$win->id ) );
-    warn "This is ", $win->id, " desc.id=", $win->lastChild->id;
+    warn "This is ", $win->id, " desc.id=", $win->lastChild->id 
+                unless $ENV{AUTOMATED_TESTING};
 }
 
 sub connect
@@ -114,7 +115,7 @@ sub connect
     $D->textNode( 'Opened window '.$win->id );
 
     $win->appendChild( Description( "This is ".$win->id ) );
-    warn "This is ", $win->id, " desc.id=", $win->lastChild->id;
+    # warn "This is ", $win->id, " desc.id=", $win->lastChild->id;
 
     die "Why no number in ", $win->id unless $win->id =~ /-(\d+)/;
     my $n = $1;

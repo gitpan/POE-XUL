@@ -1,6 +1,6 @@
 package POE::XUL::Application;
 # $Id$
-# Copyright Philip Gwyn 2007.  All rights reserved.
+# Copyright Philip Gwyn 2007-2008.  All rights reserved.
 
 use strict;
 use warnings;
@@ -349,7 +349,7 @@ Philip Gwyn E<lt>gwyn-at-cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

@@ -1,6 +1,6 @@
 # Copyright 2007 by Philip Gwyn.  All rights reserved;
 
-our $VERSION = '0.0404';
+our $VERSION = '0.0405';
 
 __END__
 
@@ -71,66 +71,41 @@ At the heart of POE::XUL is the concept of mirror objects.  That is, each
 XUL element exists as a Perl object (L<POE::XUL::Node>) in the server and as
 a DOM object in the client.  A ChangeManager on the server and the
 javascript client library are responsible for keeping the objects in sync. 
-Note that while all element attribute changes in the server are mirrored in the
-client, only the most important attributes (C<value>, C<selected>, ...) are
-mirrored from the client to the server.
+Note that while all element attribute changes in the server are mirrored in
+the client, only the most important attributes (C<value>, C<selected>, ...)
+are mirrored from the client to the server.
 
 POE::XUL currently uses a syncronous, event-based model for updates.  This
-will be changed to an asyncronous, bidirectional model (comet) soon, I hope.
+will be changed to an asyncronous, bidirectional model (aka
+L<comet|http://cometd.com/>) soon, I hope.
 
 XUL is only supported by browsers from the mozilla project (Firefox and
 xulrunner).  While this limits POE::XUL's use for general web application,
 POE::XUL would make for some very powerful intranet apps.
 
-B<NOTE>: POE::XUL should be considered alpha quality.  While I have apps
-based on POE::XUL in production, the documentation is probably incomplete
-and this API will probably change.
+B<NOTE>: POE::XUL should be considered beta quality.  While I have
+applications based on POE::XUL in production, the documentation is probably
+incomplete and this API will probably change.
 
-POE::XUL is a fork of Ran Eilam's XUL::Node.  POE::XUL permits the async use
-of POE events during event handling and multiple window.  It also removes
-the use of the excesively slow Aspect and the heavy XML wire protocol. 
-L<POE::XUL::Node>'s API is closer to that of a DOM element.  XUL::Node's
-(IMHO) dangerous autoloading of XUL::Node::Application packages has been
-removed.
+POE::XUL is a fork of Ran Eilam's XUL::Node.  POE::XUL permits multiple
+windows, multimode content and the async use of POE events during event
+handling.  It also removes the use of the excesively slow Aspect and the
+heavy XML wire protocol.  L<POE::XUL::Node>'s API is closer to that of a DOM
+element.  XUL::Node's (IMHO) dangerous autoloading of XUL::Node::Application
+packages has been removed.
 
 =head2 Application server
 
-<<<<<<< .working
-POE::XUL applications generaly have one L<POE::session> per application
-instance.  This POE session is spawned when a boot request is recieved from
-the client.  The session then must handle a 'boot' event, where-in it
-creates a C<Window> element and its children.  The application session is
-kept active, handling the user events it has defined, until the users stops
-using it, that is a period of inactivity.  The session is then sent a
-'timeout' event followed by a 'shutdown' event.
-=======
 L<POE::Component::XUL> is an HTTP server that maps all requests to the
 relevant application instance.  It will timeout inactive applications.
->>>>>>> .merge-right.r1005
 
-<<<<<<< .working
-Because every application stays in-memory for the entire duration of the
-application, you will probably want to set up a HTTP proxy front-end with
-process affinity.  Or be very sure that no POE state blocks.
-=======
 An application instance stays in-memory for the entire duration of the
 application.  There is no saving and loading of the application data for
 each HTTP request.  Because of this, you will probably want to set up a HTTP
 proxy front-end with process affinity.  Or be very sure that no POE state
 blocks.
->>>>>>> .merge-right.r1005
 
-<<<<<<< .working
-It might also be possible to have multiple L<POE::XUL> applications within
-one session.  Tests needed.
-=======
->>>>>>> .merge-right.r1005
-
-<<<<<<< .working
-=head2 XUL elements
-=======
 =head2 POE::XUL::Application
->>>>>>> .merge-right.r1005
 
 POE::XUL applications are a sub-class of L<POE::XUL::Application>, which
 takes care of most of the interaction with the server and provides many
@@ -214,6 +189,14 @@ You are encouraged to create your own XUL nodes with XBL.  To do so, you
 will need a custom C<start.xul> that loads the CSS that defines your XBL. 
 To create the nodes with C<POE::XUL::Node>
 
+=head2 Security
+
+Remote XUL applications run as untrusted code.  This means that you will not
+be able to XPCOM, the client's harddisk.  However, it should be possible
+to bundle the XUL client library into a signed component.  This will be done
+once POE::XUL stablizes.
+
+
 =head1 POE::XUL EVENTS
 
 The life of an application is controled by 1 package method and 2 or more
@@ -245,7 +228,7 @@ Posted when it is time to delete an application instance.  This is either
 when the instance has timed-out, or when the server is shutting down.
 
 See L<POE::XUL::Application/shutdown>, 
-L<POE::XUL::POE/shutdown> and
+L<POE::XUL::POE/shutdown>,
 L<POE::XUL::Event/shutdown>.
 
 =head1 MULTIPLE WINDOWS
@@ -255,12 +238,19 @@ are main window (created by L</boot>) and multple sub-windows.
 
 A sub-window is created with the L<POE::XUL::Window/open> method.
 
-When the browser creates the window a L<connect|POE::XUL::Application/connect>
-event is sent.
-When the window is closed L<disconnect|POE::XUL::Application/disconnect>
-event is sent.
+=head2 connect
 
-See also L<POE::XUL::POE/connect> and L<POE::XUL::POE/disconnect>.
+When the browser creates the window a
+L<connect|POE::XUL::Application/connect> event is sent. This is when your
+application should populate the window. See also L<POE::XUL::POE/connect>
+and L<POE::XUL::Event/connect>.
+
+=head2 disconnect
+
+When the window is closed L<disconnect|POE::XUL::Application/disconnect>
+event is sent.  This is when your application should clear all resources
+used by the window.  See also L<POE::XUL::POE/disconnect> and
+L<POE::XUL::Event/connect>.
 
 =head1 DOM EVENTS
 

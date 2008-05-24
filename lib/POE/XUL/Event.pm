@@ -1,6 +1,6 @@
 package POE::XUL::Event;
-# $Id: Event.pm 1009 2008-05-23 17:03:36Z fil $
-# Copyright Philip Gwyn 2007.  All rights reserved.
+# $Id: Event.pm 1023 2008-05-24 03:10:20Z fil $
+# Copyright Philip Gwyn 2007-2008.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
 use strict;
@@ -544,7 +544,7 @@ Based on XUL::Node::Event by Ran Eilam.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
 
 Copyright 2003-2004 Ran Eilam. All rights reserved.
 

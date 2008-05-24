@@ -1,6 +1,6 @@
 package POE::XUL::Window;
 # $Id$
-# Copyright Philip Gwyn 2007.  All rights reserved.
+# Copyright Philip Gwyn 2007-2008.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
 use strict;
@@ -56,12 +56,12 @@ sub close
 {
     my( $self ) = @_;
 
-    $self->closed( 1 );
     # carp "$self.close";    
     $POE::XUL::Node::CM->close_window( $self->id );
     # this will cause a close instruction, which closes then window
     # which will provoke 'disconnect' request, which is where the 
     # window is finnaly GCed
+    $self->closed( 1 );
 }
 
 ##############################################################
@@ -73,6 +73,7 @@ sub getElementById
             unless $self->is_window;
     return $POE::XUL::Node::CM->getElementById( $id );
 }
+*node = \&getElementById;
 
 ##############################################################
 sub dispose
@@ -122,9 +123,28 @@ POE::XUL::Window - XUL window element
 
 =head1 DESCRIPTION
 
+POE::XUL::Window is a special sub-class of L<POE::XUL::Node> to handle
+window elements.
+
+=head1 METHODS
+
+=head2 getElementById
+
+=head2 node
+
+Shorter name for L</getElementById>.
+
+    my $button = window->node( 'B1' );
+
+=head2 open
+
+=head2 close
+
+=head2 destroy
+
 =head1 SEE ALSO
 
-L<POE::XUL>, L<POE::XUL::Node>,
+L<POE::XUL>, L<POE::XUL::Node>, L<POE::XUL::POE>,
 L<POE::XUL::Event> presents the list of all possible events.
 
 L<http://developer.mozilla.org/en/docs/XUL>
@@ -141,7 +161,7 @@ Based on work by Ran Eilam.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
 
 Copyright 2003-2004 Ran Eilam. All rights reserved.
 

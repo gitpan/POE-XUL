@@ -460,11 +460,11 @@ sub Click
     my( $self, $button ) = @_;
 
     unless( ref $button ) {
-        diag( "Clicking $button" );
+        diag( "Clicking $button" ) if not $ENV{AUTOMATED_TESTING};
         $button = $self->test_node( $button, 'button' );
     }
     else {
-        diag( "Clicking $button->{id}" );
+        diag( "Clicking $button->{id}" ) if not $ENV{AUTOMATED_TESTING};
     }
 
     my $URI = $self->Click_uri( $button );

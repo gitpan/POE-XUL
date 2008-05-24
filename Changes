@@ -1,6 +1,15 @@
 Revision history for Perl extension POE::XUL.
 
-0.0402 May 23 2008
+0.0405 May 24 2008
+    - Now I seem to have a handle on the CPAN testers problem
+    - Updated all copyright years
+    - Hide POE::XUL::Session from CPAN indexer
+    - Silence a bunch of cookie crumbs with AUTOMATED_TESTING
+    - Fixed some merge errors
+    - Added t/01_pod.t
+    - Added POE::XUL::POE, which is only documentation
+
+0.0402-0.0404 May 23 2008
     - Augh!  Stupid tweaks so the CPAN testers don't complain
 
 0.0401 May 23 2008
