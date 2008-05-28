@@ -4,8 +4,6 @@
 // ------------------------------------------------------------------
 
 var $application;
-var groupbox_style = "border-color: #124578;";
-var caption_style = "color: white; font-weight: bold; padding: 0px 9px 5px 9px; margin: 0px; -moz-border-radius: 3px; background-color: #124578; border: 1px solid #124578;";
 
 function POEXUL_Application () {
 
@@ -21,6 +19,8 @@ function POEXUL_Application () {
     this.frames = [];
     this.other_windows = {};
     this.BLIP   = 10;
+    this.groupbox_style = "border-color: #124578;";
+    this.caption_style = "color: white; font-weight: bold; padding: 0px 9px 5px 9px; margin: 0px; -moz-border-radius: 3px; background-color: #124578; border: 1px solid #124578;";
 
 	this.runner = POEXUL_Runner.get();
     this.conduit = new POEXUL_Conduit ( this.baseURI() );
@@ -42,6 +42,7 @@ POEXUL_Application.get = function () {
 // Boot an instance of the application
 POEXUL_Application.boot = function () {
     // Create the application
+    window.name = '';           // mark this window as a main window
     POEXUL_Application.get();
     $application.runRequest();
 }
@@ -53,19 +54,6 @@ POEXUL_Application.connect = function ( sid ) {
     POEXUL_Application.get();
     $application.setSID( sid );
     $application.runRequest( { event: 'connect' } );
-}
-
-// ------------------------------------------------------------------
-// Get a reference to an <iframe>'s parent's Application singleton 
-POEXUL_Application.fragment = function ( id ) {
-    if( !POEXUL_Application.singleton ) {
-        POEXUL_Application.singleton = 
-            $application = window.parent.$application;
-        $application.init_window( window );
-        $application.init_fragment( document, window, id );
-    }
-
-    return POEXUL_Application.singleton;
 }
 
 var _ = POEXUL_Application.prototype;
@@ -120,7 +108,7 @@ _.baseURI = function () {
     var pathname   = location.pathname.replace(/\/[^\/]+$/, "");
     var port       = location.port;
     port           = port? ':' + port: '';
-    return uri = 'http://'+location.hostname + port + pathname + "/xul";
+    return 'http://'+location.hostname + port + pathname + "/xul";
 }
 
 // ------------------------------------------------------------------
@@ -151,10 +139,7 @@ _.crash = function ( why ) {
         title = m[1];
         message = why.substr( m[0].length );
         // Make it look nice
-        message = message.replace( "&", "&amp;", "g" );
-        message = message.replace( "<", "&lt;", "g" );
-        message = message.replace( ">", "&gt;", "g" );
-        message = message.replace( "\n", "<html:br />", "g" );
+        message = this.text2html( message );
         xul = "<html:span style='font-family: monospace;'>" + message + "</html:span>";
     }        
     else if ( why.match( /^\s*<html>/ ) ) {
@@ -164,7 +149,7 @@ _.crash = function ( why ) {
     else {
         title = "Application crash";
         // Pretty-print any other text
-        xul = why.replace( "\n", "<html:br/>", "g" );
+        xul = this.nicerHtml( why ); 
         xul = "<html:p style='width:550px'>" + why + "</html:p>"
     }
 
@@ -185,11 +170,11 @@ _.crash = function ( why ) {
                "<window xmlns='http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul' "+
                 "xmlns:html='http://www.w3.org/1999/xhtml' " +
                 "orient='vertical'>\n" +
-               "<hbox><spacer flex='1'/><groupbox class='error' style='background-color: white; margin-top: 75px;" + groupbox_style + "'>" +
-                    "<caption style='padding: 0;'><description style='" + caption_style + "'>"+ title + 
+               "<hbox><spacer flex='1'/><groupbox class='error' style='background-color: white; margin-top: 75px; max-height: 600px;" + this.groupbox_style + "'>" +
+                    "<caption style='padding: 0;'><description style='" + this.caption_style + "'>"+ title + 
                     "</description></caption>" +
                "<hbox style='max-width:600px; min-width: 200px; overflow: auto;' flex='1'><vbox><image class='error-icon'/><spacer/></vbox>" +
-                    "<description>" + xul + "</description></hbox>" +
+                    "<description style='margin-bottom: 2em;'>" + xul + "</description></hbox>" +
                 "</groupbox><spacer flex='1'/></hbox><spacer/></window>";
         mime = "application/vnd.mozilla.xul+xml";
     }
@@ -205,6 +190,29 @@ _.crash = function ( why ) {
         throw( err );
     }
     window.location = "data:"+mime+";base64," + data;
+}
+
+_.text2html = function ( message ) {
+
+//    message = String( message ).escapeHTML();
+    message = message.replace( "&", "&amp;", "g" );
+    message = message.replace( "<", "&lt;", "g" );
+    message = message.replace( ">", "&gt;", "g" );
+
+    return this.nicerHtml( message );
+}
+
+_.nicerHtml = function ( message ) {
+
+    message = message.replace( /^\s+/gm, 
+                                   function ( match ) {
+                                    return String( '    ' ).times( match.length );
+                             } );
+    message = message.replace( /^ +/gm, 
+                                   function (match ) {
+                                        return String( "&#160;" ).times( match.length );
+                             } );
+    return message.replace( "\n", "<html:br />\n", "g" );
 }
 
 

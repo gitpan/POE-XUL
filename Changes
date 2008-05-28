@@ -1,5 +1,10 @@
 Revision history for Perl extension POE::XUL.
 
+0.0406 May 29 2008
+    - Use $(ABSPERLRUN)
+    - Tweak crash message CSS
+    - Tweak MANFEST and add MANIFEST.SKIP
+
 0.0405 May 24 2008
     - Now I seem to have a handle on the CPAN testers problem
     - Updated all copyright years

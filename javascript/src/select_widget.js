@@ -2,7 +2,7 @@
 // Copyright 2007-2008 Philip Gwyn.  All rights reserved.
 // ------------------------------------------------------------------
 
-select_widget = new Object();
+// select_widget = new Object();
 
 // ------------------------------------------------------------------
 function SelectWidget ( id, contingent ) {

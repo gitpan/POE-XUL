@@ -162,7 +162,7 @@ JSSRC=\$(shell find $JS_DIR/src -name \\*.js | grep -v .\\#)
 
 js_to_poexul: Makefile \$(JSLIB) \$(JSSRC)
 	\$(NOECHO) \$(MKPATH) $SERVER_JS_DIR/
-	\$(NOECHO) perl bin/js-build  $SERVER_JS_DIR $JS_DIR/lib $JS_DIR/src
+	\$(NOECHO) \$(ABSPERLRUN) bin/js-build $SERVER_JS_DIR $JS_DIR/lib $JS_DIR/src
 	\$(NOECHO) \$(TOUCH) js_to_poexul
 
 js_cleanup:

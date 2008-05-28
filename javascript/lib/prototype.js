@@ -256,6 +256,10 @@ Object.extend(String.prototype, {
       String.fromCharCode(this.charCodeAt(this.length - 1) + 1);
   },
 
+  times: function(count) {
+    return count < 1 ? '' : new Array(count + 1).join(this);
+  },
+
   camelize: function() {
     var parts = this.split('-'), len = parts.length;
     if (len == 1) return parts[0];
@@ -1780,7 +1784,7 @@ Selector.prototype = {
     if (this.expression == '')  abort('empty expression');
 
     var params = this.params, expr = this.expression, match, modifier, clause, rest;
-    while (match = expr.match(/^(.*)\[([a-z0-9_:-]+?)(?:([~\|!]?=)(?:"([^"]*)"|([^\]\s]*)))?\]$/i)) {
+    while (match = expr.match(/^(.*)\[([a-z0-9_:-]+?)(?:([~\|!]?=)(?:"([^"]*)"|([^\]\s]*)))?\]$/i)) { //"
       params.attributes = params.attributes || [];
       params.attributes.push({name: match[2], operator: match[3], value: match[4] || match[5] || ''});
       expr = match[1];

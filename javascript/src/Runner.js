@@ -264,7 +264,7 @@ _.runCommand = function (command) {
 	var arg1       = command['arg1'];
 	var arg2       = command['arg2'];
 	var arg3       = command['arg3'];
-    rv             = 0;
+    var rv         = 0;
 	if (methodName == 'new') {
 		if (arg1 == 'window')
 			this.commandNewWindow(nodeId);
@@ -432,7 +432,9 @@ _.commandStyle = function ( nodeId, property, value ) {
         var element = this.newNodes[nodeId];
         if (!element) element = this.getNode(nodeId);
 
-        // fb_log( { id: nodeId, style: property, value: value } );
+        if( property != 'display' || value != 'none' || 
+                nodeId == 'XUL-Details' ) 
+            fb_log( nodeId + ".style."+property+"="+value );
         element.style[property] = value;
         
     } catch (e) {
@@ -575,13 +577,22 @@ _.commandSetProperty = function ( element, key, value ) {
     if (key == 'selectedIndex') {
         return this.commandSelectedIndex( element, value );
     }
-    if( 0 ) {
-        var js = '$("'+element.id+'").' + key + '=' + value;
-        fb_log( js );
-        eval( js );
+    try {
+        if( key == 'splitTop' ) 
+            fb_log( element.id + "." + key + "=" + value );
+        if( 0 ) {
+            var js = '$("'+element.id+'").' + key + '=' + value;
+            fb_log( js );
+            eval( js );
+        }
+        else {
+            element[key] = value;
+        }
     }
-    else {
-        element[key] = value;
+    catch (e ) {
+        Throw( e,
+                'Cannot set ' + element.id + '.' + key + '=' + value
+             );
     }
 
 }
@@ -878,6 +889,7 @@ POEXUL_Runner.propertyAttributes = {
 // part of the document (ie, after XBL activation), before that, as attributes
 POEXUL_Runner.freshAttributes = {
 	'value'         : true,
+    'splitTop'      : true,
 	'id'            : true,
 };
 
