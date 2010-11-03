@@ -6,8 +6,7 @@
 var css_browser_selector = function() {
 	var 
 		ua=navigator.userAgent.toLowerCase(),
-		is=function(t){ return ua.indexOf(t) != -1; },
-		h=document.firstChild;
+		is=function(t){ return ua.indexOf(t) != -1; };
     var b=(!(/opera|webtv/i.test(ua))&&/msie (\d)/.test(ua)) ? ('ie ie'+RegExp.$1) :
             is('gecko/') ? 'gecko' : 
             is('opera/9') ? 'opera opera9' :
@@ -23,6 +22,9 @@ var css_browser_selector = function() {
                     ' firefox'+RegExp.$1+'_'+RegExp.$2 :
             is('explorer') ? ' explorer' : '';
 	var c=b+os+bm+' js';
+    fb_log( c );
+    fb_dir( h );
+    var h = document.documentElement;
 	h.className += h.className?' '+c:c;
     return c;
 }();

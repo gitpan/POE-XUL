@@ -1,6 +1,6 @@
 package POE::XUL::Style;
 # $Id$
-# Copyright Philip Gwyn 2008.  All rights reserved.
+# Copyright Philip Gwyn 2008-2010.  All rights reserved.
 
 use strict;
 use warnings;
@@ -11,11 +11,12 @@ use Carp;
 
 use overload '""' => sub { $_[0]->as_string }, 
              '+'  => sub { refaddr $_[0] },
-             'bool' => sub { 1 };
+             'bool' => sub { 1 },
+             fallback => 1;
 
 use constant DEBUG => 0;
 
-our $VERSION = '0.01';
+our $VERSION = '0.0600';
 
 my %EQUIV = qw(
     border-top border
@@ -111,7 +112,7 @@ sub parse
             }
         }
         # property: value
-        # Note that this fails for property: "some; value"; SO DON'T DO THAT
+        # Note this fails for property: "some; value"; please DON'T DO THAT
         elsif( $string =~ s,^((-?[_a-z][-_a-zA-Z]*)\s*:\s*(.*?)\s*(\Z|;\s*)),,is ) {
             push @{ $self->{text} }, $1;
             $self->{prop}{lc $2} = { 
@@ -333,7 +334,7 @@ passed on to the browser.
 L<POE::XUL::Node>
 
 L<http://developer.mozilla.org/en/docs/CSS>
-has a good XUL reference.
+has a good CSS reference.
 
 L<http://www.w3.org/TR/CSS/>
 the CSS specification.
@@ -344,7 +345,7 @@ Philip Gwyn E<lt>gwyn-at-cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2008 by Philip Gwyn.  All rights reserved;
+Copyright 2008-2010 by Philip Gwyn.  All rights reserved;
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

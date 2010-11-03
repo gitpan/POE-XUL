@@ -3,11 +3,20 @@
 // Copyright 2007-2008 Philip Gwyn.  All rights reserved.
 // ------------------------------------------------------------------
 function Throw(a, b) {
-        var message       = b? (a.message || a.description) + "\n" + b: a;
-        fb_log(message);
-        var exception     = b? a: new Error;
-        exception.message = exception.description = message;
-        throw exception;
+    if( window['console'] && console['trace'] )
+        console.trace( b );
+    var message = a;
+    if( b ) {
+        message = ( a.description || a.message );
+        if( a['filename'] )
+            message += "\n  File " + a.filename;
+        if( a['lineNumber'] )
+            message += " line " + a.lineNumber;
+        message += "\n" + b;
+    }
+    fb_log(message);
+    var exception     = new Error( message );
+    throw exception;
 }
 
 
@@ -16,10 +25,19 @@ function POEXUL_Runner () {
     if( POEXUL_Runner.singleton ) 
         return POEXUL_Runner.singleton;
 
+    // Document element
     this.document = window.document;
+    // <window> node
+    var wel = window.document.getElementsByTagNameNS( 
+                                $application.xulNS,
+                                'window' );
+    this.windowEl = wel[0];
+    // fb_log( wel[0] );
 
+    // Also used by .deferSelectedIndex()
     this.BLIP = 5;
-    this.slice_size = 53;
+    // Note : this grows in .runDone()
+    this.slice_size = 64;
     this.timeouts = {};
 }
 
@@ -34,16 +52,21 @@ POEXUL_Runner.get = function () {
 // ------------------------------------------------------------------
 _.run = function ( response ) {
 
+    fb_runner( response.length );
+
     this.start = Date.now();
-	this.resetBuffers();
+    this.resetBuffers();
 
     var commands = [];
     var accume = {};
     var for_win = window.name;
     var have_accume = 0;
-	for( var R=0; R < response.length; R++ ) {
+    for( var R=0; R < response.length; R++ ) {
         var I = response[R];
-        if( I[0] == 'for' ) {     // which window is this for?
+        if( 0==I.length ) {
+            // do nothing
+        }
+        else if( I[0] == 'for' ) {     // which window is this for?
             for_win = I[1];
         }
         else if( for_win == window.name ) { // for our window?
@@ -69,10 +92,11 @@ _.run = function ( response ) {
     this.EXs = [];
     this.nCmds = commands.length;
 
-    if( commands.nCmds > this.slice_size && $status ) {
-        fb_log( "running " + this.nCmds + " commands" );
+    // fb_log( { nCmds: this.nCmds, slice_size: this.slice_size } );
+    if( this.nCmds > 10*this.slice_size && $status ) {
+        fb_log( "Running " + this.nCmds + " commands" );
         $status.progress( 0, this.nCmds );
-        $status.show;
+        $status.show();
     }
 
     this.runCommands( commands );
@@ -101,8 +125,9 @@ _.runCommands = function ( commands ) {
 // Run a batch of commands, then give up a time-slice
 _.runBatch = function ( commands, late ) {
 
-    if( late && 0 )
+    if( late && 0 ) {
         fb_log( 'runBatch n=' + commands.length + " late=" + late );
+    }
     var count = 0;
     var accume = {};
     var for_win = window.name || '';
@@ -175,23 +200,36 @@ _.deferCommands = function ( commands, late ) {
 // ------------------------------------------------------------------
 _.addNewNodes = function () {
 
-    var roots = this.newNodeRoots
-	for( var parentId in roots ) {
+    var roots = this.newNodeRoots;
+    for( var parentId in roots ) {
         // prototype.js's Object.each is getting into our Array
         if( 'object' == typeof roots[parentId] ) {
-            for( var child in roots[parentId] ) {
-                // prototype.js's Object.each is getting into our Array
-                if( 'object' == typeof roots[parentId][child] ) {
-                    //alert( "parentID="+parentId+ " child=" +
-                    //                        roots[parentId][child] );
-                    this.addElementAtIndex( this.getNode(parentId),
-                                            roots[parentId][child]
-                                          );
+            var rootNode = this.getNode( parentId, true );
+            if( ! rootNode ) {
+                fb_log( "Out of order root %s is a new node", parentId );
+                rootNode = this.newNodes[parentId];
+            }
+            if( ! rootNode ) {
+                fb_log( "Failed to find parent ", parentId );
+                fb_log( { for: roots[parentId],
+                          newNodes: this.newNodes 
+                      } );
+            }
+            else {
+                for( var child in roots[parentId] ) {
+                    // prototype.js's Object.each is getting into our Array
+                    if( 'object' == typeof roots[parentId][child] ) {
+                        //fb_log( "parentID="+parentId+ " child=" +
+                        //                        roots[parentId][child] );
+                        this.addElementAtIndex( rootNode, 
+                                                roots[parentId][child] 
+                                              );
+                    }
                 }
             }
         }
     }
-    this.newNodeRoots = [];
+    this.newNodeRoots = {};
 }
 
 // ------------------------------------------------------------------
@@ -232,12 +270,14 @@ _.runDone = function () {
     // we are really finished
     if( $status )
         $status.hide();
-    this.slice_size = 971;
+    this.slice_size = 256;
     this.resetBuffers();
     this.handleExceptions();
 
     this.nCmds = 0;
     this.booting = false;
+    $application.status( 'done' );
+    fb_runnerEnd();
 }
 
 // ------------------------------------------------------------------
@@ -259,35 +299,35 @@ _.largeThrow = function ( EXs ) {
 // Run one command.
 // Returning 1 means we want to give up a timeslice
 _.runCommand = function (command) {
-	var methodName = command['methodName'];
-	var nodeId     = command['nodeId'];
-	var arg1       = command['arg1'];
-	var arg2       = command['arg2'];
-	var arg3       = command['arg3'];
+    var methodName = command['methodName'];
+    var nodeId     = command['nodeId'];
+    var arg1       = command['arg1'];
+    var arg2       = command['arg2'];
+    var arg3       = command['arg3'];
     var rv         = 0;
-	if (methodName == 'new') {
-		if (arg1 == 'window')
-			this.commandNewWindow(nodeId);
+    if (methodName == 'new') {
+        if (arg1 == 'window')
+            this.commandNewWindow(nodeId);
         else
-			this.commandNewElement(nodeId, arg1, arg2, arg3);
+            this.commandNewElement(nodeId, arg1, arg2, arg3);
     }
     else if (methodName == 'textnode' ) {
         this.commandNewTextNode( nodeId, arg1, arg2 );
     }
-	else if (methodName == 'SID') {
+    else if (methodName == 'SID') {
         $application.setSID( nodeId );
     }
-	else if (methodName == 'boot') {
+    else if (methodName == 'boot') {
         if( $status )
             $status.title( nodeId );
         this.booting = true;
         rv = 1;
     }
-	else if ( methodName == 'bye' ) {
-	    this.commandByeElement(nodeId);
+    else if ( methodName == 'bye' ) {
+        this.commandByeElement(nodeId);
     }
-	else if ( methodName == 'bye-textnode' ) {
-	    this.commandByeTextNode( nodeId , arg1 );
+    else if ( methodName == 'bye-textnode' ) {
+        this.commandByeTextNode( nodeId , arg1 );
     }
     else if( methodName == 'set' ) {
         if ( !this.late && ( POEXUL_Runner.lateAttributes[arg1] || 
@@ -301,6 +341,9 @@ _.runCommand = function (command) {
     }
     else if( methodName == 'remove' ) {
         this.commandRemoveAttribute(nodeId, arg1);
+    }
+    else if( methodName == 'method' ) {
+        this.commandMethod(nodeId, arg1, arg2);
     }
     else if( methodName == 'javascript' ) {
         this.commandJavascript( arg1 );
@@ -325,10 +368,10 @@ _.runCommand = function (command) {
         rv = 2;
     }
     else if( window.name ) {
-        alert( window.name + ": Unknown command '" + methodName + "'" );
+        fb_log( window.name + ": Unknown command '" + methodName + "'" );
     }
     else {
-        alert( "Unknown command '" + methodName + "'" );
+        fb_log( "Unknown command '" + methodName + "'" );
     }
     return rv;
 }
@@ -352,7 +395,7 @@ _.isLateCommand = function ( command ) {
 
 // ------------------------------------------------------------------
 _.commandNewWindow = function (nodeId) {
-	this.windowId = nodeId;
+    this.windowId = nodeId;
 }
 
 // ------------------------------------------------------------------
@@ -404,12 +447,7 @@ _.commandCDATA = function ( nodeId, index, data ) {
         var element = this.newNodes[nodeId];
         if (!element) element = this.getNode(nodeId);
 
-        if ( index < element.childNodes.length ) {
-            element.replaceChild( cdata, element.childNodes[index] );
-        }
-        else {
-            element.appendChild( cdata );
-        }
+        this.addElement( element, cdata, index );
 
         if( element.nodeName == 'script' &&
                 element.getAttribute( 'type' ) == 'text/javascript' ) {
@@ -432,11 +470,13 @@ _.commandStyle = function ( nodeId, property, value ) {
         var element = this.newNodes[nodeId];
         if (!element) element = this.getNode(nodeId);
 
-        if( property != 'display' || value != 'none' || 
-                nodeId == 'XUL-Details' ) 
-            fb_log( nodeId + ".style."+property+"="+value );
+        //if( property != 'display' || value != 'none' || 
+        //        nodeId == 'XUL-Details' ) 
+        //          fb_log( nodeId + ".style."+property+"="+value );
         element.style[property] = value;
-        
+        if( property == 'display' && value == 'none' &&
+                            element.tagName == 'groupbox' )
+            this.clearGroupbox( element );        
     } catch (e) {
         Throw(e,
                 'Cannot set style ' + nodeId + '.style.' + property + 
@@ -453,15 +493,11 @@ _.commandNewTextNode = function ( nodeId, index, text ) {
         var element = this.newNodes[nodeId];
         if( !element ) 
             element = this.getNode(nodeId);
-        if( index < element.childNodes.length ) {
-            var el = element.replaceChild( tn, element.childNodes[index] );
-            // work around the fact XBL doesn't call destuctor
-            if( el.dispose )
-                el.dispose();
+        if( index < 0 ) {
+//            index = this.firstTextNode( element );
         }
-        else {
-            element.appendChild( tn );
-        }
+        // fb_log( "Text node = %i", index );
+        this.addElement( element, tn, index );
     } catch (e) {
         Throw(e,
                 'Cannot create new TextNode: ' + nodeId +
@@ -469,6 +505,36 @@ _.commandNewTextNode = function ( nodeId, index, text ) {
             );
     }
 }
+
+// find the first textnode child
+_.firstTextNode = function ( element ) {
+
+    var index = 0;
+    var node = element.firstChild;
+    while( node ) {
+        if( node.nodeName == '#text' ) {
+            return index;
+        }
+        index++;
+        node = node.nextSibling;
+    }
+    return -1;
+}
+
+
+_.addElement = function ( parent, node, index ) {
+    var count = parent.childNodes.length;
+    if( index == null || count == 0 || index < 0 || index >= count ) {
+        parent.appendChild( node )
+    }
+    else {
+        var el = parent.replaceChild( node, parent.childNodes[index] );
+        // work around the fact XBL doesn't call destuctor
+        if( el.dispose )
+            el.dispose();
+    }
+}
+
 
 // ------------------------------------------------------------------
 _.commandByeTextNode = function ( nodeId, index ) { 
@@ -487,6 +553,21 @@ _.commandByeTextNode = function ( nodeId, index ) {
              );
     }
 }
+
+// ------------------------------------------------------------------
+_.commandMethod = function ( nodeId, method, args ) { 
+    try {
+        var element = this.newNodes[nodeId];
+        if( !element ) 
+            element = this.getNode(nodeId);
+        fb_log( "%s.%s(", nodeId, method, args );
+        element[method].apply( element, args );
+
+    } catch (e) {
+        Throw(e, 'Cannot call method: ' + nodeId + '.' + method );
+    }
+}
+
 
 // ------------------------------------------------------------------
 _.commandSetNode = function (nodeId, key, value) { 
@@ -514,13 +595,16 @@ _.commandSetNode = function (nodeId, key, value) {
             return;
         }
 
-        if (POEXUL_Runner.boleanAttributes[key]) {
+        if (POEXUL_Runner.booleanAttributes[key]) {
             value = (value == 0 || value == '' || value == null)? false: true;
             if (!value) {
                 element.removeAttribute(key);
             }
             else {
                 element.setAttribute(key, 'true');
+            }
+            if( POEXUL_Runner.propertyAttributes[key] ) {
+                this.commandSetProperty( element, key, value );
             }
             return;
         }
@@ -553,15 +637,35 @@ _.commandSetNode = function (nodeId, key, value) {
             this.commandSetEvent( element, key, value );
         }
 
-
         if ( POEXUL_Runner.propertyAttributes[key] ) {
             this.commandSetProperty( element, key, value );
+            if( key == 'selectedIndex' )
+                return;
+            // Question : under what circumstances is setting the property
+            // and the attribute not good idea?
         }
+        // Some attributes are also properties.  And have to be set there
+        // also.
         else if( !freshNode && POEXUL_Runner.freshAttributes[ key ] ) {
-            // fb_log( "non-fresh " + key + "=" + value );
+            if( ! key in element ) {
+                fb_log( "Curses!  %s isn't available.  Maybe XBL not activated yet", key );
+            }
+            // fb_log( "Non-fresh %s.%s='%s'", element.id, key, value );
             this.commandSetProperty( element, key, value );
         }
-        element.setAttribute( key, value );
+        // Add (or remove) the attribute
+        if( value == undefined ) {
+            element.removeAttribute( key );
+        }
+        else {
+            element.setAttribute( key, value );
+        }
+        //if( POEXUL_Runner.propertyAlso[key] )
+        //    element[key] = value
+
+        if( key == 'style' && value && value.match( /display:\s*none/ ) && element.tagName == 'groupbox' )
+            this.clearGroupbox( element );        
+
     } 
     catch (e) {
         throw(e);
@@ -574,16 +678,23 @@ _.commandSetNode = function (nodeId, key, value) {
 
 // ------------------------------------------------------------------
 _.commandSetProperty = function ( element, key, value ) {
-    if (key == 'selectedIndex') {
-        return this.commandSelectedIndex( element, value );
-    }
     try {
-        if( key == 'splitTop' ) 
-            fb_log( element.id + "." + key + "=" + value );
-        if( 0 ) {
-            var js = '$("'+element.id+'").' + key + '=' + value;
-            fb_log( js );
-            eval( js );
+        // For some random reason, element['value'] = value isn't always
+        // calling our property setter.  So, we create setValue which so far
+        // seems to do the trick
+        var setter = "set-" + key;
+        setter = setter.camelize();
+        if ( 'function' == typeof element[setter] ) {
+            var array = [ value ];
+            element[setter].apply( element, array );
+        }
+        else if (key == 'selectedIndex') {
+            this.commandSelectedIndex( element, value );
+            return;
+        }
+        else if (key == 'callback' ) {
+            this.commandCallback( element, value );
+            return;
         }
         else {
             element[key] = value;
@@ -594,7 +705,6 @@ _.commandSetProperty = function ( element, key, value ) {
                 'Cannot set ' + element.id + '.' + key + '=' + value
              );
     }
-
 }
 
 
@@ -641,59 +751,138 @@ _.commandSetEvent = function ( element, key, value ) {
 // ------------------------------------------------------------------
 _.commandSelectedIndex = function ( element, value, _try ) {
 
-    element.setAttribute("suppressonselect", true);
+    var doit = 0, popup = 0;
+    if( !_try ) {
+        doit = 0;
+    }
+    else if( element.tagName == 'radiogroup' ) {
+        if( element.appendItem ) doit = 1;
+    }
+    else if( element.tagName == 'menulist' ) {
+        popup = element.menupopup;
+        if( element.menupopup ) doit = 1;
+    }
+    else {
+        fb_log( "how to tell if %s is active?", element.tagName );
+        doit = 1;
+    }
+    if( !doit ) {
+        this.deferSelectedIndex( element, value, _try );
+        return;
+    }
 
-    // fb_log( "property " + element.id + ".selectedIndex=" + value );
+    var id = element.getAttribute( 'id' );
     var done;
+    var sel;
+    element.setAttribute("suppressonselect", 'true');
     if( value >= 0 ) {
-        var popup = element.menupopup;
-        if( !popup ) {
-            this.deferSelectedIndex( element, value, _try );
-            return;
+        // This line should be enough... BUT ISN'T!  
+        // I hate you, Milkman Random Behaviour
+        element.selectedIndex = value;
+
+        // But this is stupid : menulist.xml does all the following (and more)
+        // in <property name="selectedItem">
+        // We do it anyway, and pray.
+        if( popup ) {
+            sel = popup.childNodes[value-0];
+            if( sel ) {
+                element.selectedItem = sel;
+                // Setting .value on editable="true" will cause the 
+                // item to disapear
+                var editable = element.getAttribute( 'editable' );
+                if (!editable || editable != 'true' ) {
+                    // Next line forces the display to be updated in 
+                    // some situations
+                    element.value = sel.getAttribute( 'value' );
+                }
+            }
+        }
+        else {
+            sel = element.selectedItem;
         }
 
-
-        // This line should be enough... BUT ISN'T!  I hate you, milkman
-        // random behaviour
-        element.selectedIndex = value;
-        var sel = popup.childNodes[value];
-        // fb_log( '.selectedItem = ' + sel );
-        // Next line forces the display to be updated in some situations
-        element.value = sel.value;
-        // fb_log( element.id + '.selectedItem.id = ' + element.selectedItem.id );
-        // fb_log( element.id + '.selectedIndex = ' + element.selectedIndex );
-        done = true;
+        if( sel ) {
+            sel.setAttribute( 'selected', "true" );
+        }
     }
-    if( ! done ) {
+    else {
         element.selectedItem = null;
     }
-
     element.removeAttribute( "suppressonselect" );
+    
     return;
+}
+
+// ------------------------------------------------------------------
+_.commandCallback = function ( element, value ) {
+    
+    var req = { attribute: value,
+                source_id: element.id,
+                event: 'Callback'
+              };
+
+    if( 'object' == typeof value ) {
+        req.attribute = value.attribute;
+        req.extra = value.extra;
+    }
+
+    var uri = $application.buildURI( req );
+    var att = req.attribute.replace( "hidden-", "" );
+    element.setAttribute( att, uri );
 }
 
 // ------------------------------------------------------------------
 _.deferSelectedIndex = function ( element, value, _try ) {
 
-    if( !_try ) _try = 0;
+    if( !_try ) 
+        _try = 0;
+
+
+    var id = element.getAttribute( 'id' );
     // fb_log( element.id + " has no menupopup try=" + _try );
-    var tid = "SelectedIndex" + element.id;
+    var tid = "TID.selectedIndex";
     _try++;
     if( _try < 6 ) {
+        //if( _try > 1 )
+        //    fb_log( "defering %s.selectedIndex try=%i", id, _try );
+
         // only the last one will stay in the loop
-        if( this.timeouts[tid] ) 
-            window.clearTimeout( this.timeouts[tid] );
+        if( this.timeouts[tid] ) {
+            window.clearTimeout( this.timeouts[ tid ] );
+        }
+
+        // Do the commands as one batch, all together, after they
+        // have all been added to the 'deferred' array
         var self = this;
         this.timeouts[tid] = window.setTimeout( function () {
-                        self.commandSelectedIndex( element, value, _try );
-                        delete self.timeouts[tid];
-                     }, 250 );
+                        delete self.timeouts[ tid ];
+                        self.doDeferredSelectedIndex( tid );
+                     }, this.BLIP * 20 );
+        // Add the command to the batch
+        if( ! this.deferredSelectedIndex ) 
+            this.deferredSelectedIndex = [];
+        this.deferredSelectedIndex.push( [ element, value, _try ] );
     }
     else {
         element.selectedIndex = value;
-        fb_log( 'Giving up on ' + element.id );
+        element.setAttribute( 'selectedIndex', value );
+        fb_log( 'Giving up on %s.selectedIndex=%i', id, value );
     }
 }
+
+// ------------------------------------------------------------------
+// Do all the commands in the deferred batch
+_.doDeferredSelectedIndex = function (tid) {
+    var todo = this.deferredSelectedIndex;
+    this.deferredSelectedIndex = [];
+
+    var l = todo.length;
+    for( var q=0; q<l; q++ ) {
+        // fb_log( q, todo[q] );
+        this.commandSelectedIndex( todo[q][0], todo[q][1], todo[q][2] );
+    }
+}
+
 // ------------------------------------------------------------------
 _.commandRemoveAttribute = function (nodeId, key, value) { 
     try {
@@ -701,9 +890,13 @@ _.commandRemoveAttribute = function (nodeId, key, value) {
 
         if (!element) element = this.getNode(nodeId);
         element.removeAttribute( key );
+        if( key in element && element.__lookupSetter__( key ) ) {
+            fb_log( "remove %s.%s", element.id, key );
+            element[key] = '';          // also clear the property
+        }
     } catch (e) {
         Throw(e,
-            'Cannot do remove attribute from node: [' + nodeId + ', ' + key + ']'
+            'Cannot remove attribute from node: [' + nodeId + ', ' + key + ']'
         );
     }
 }
@@ -752,7 +945,7 @@ _.commandByeElement = function (nodeId) {
     var node = this.newNodes[nodeId];
     if( node ) {
         delete this.newNodes[nodeId];
-        // fb_log( 'bye new node' );
+        // fb_log( 'bye new node %s', nodeId );
         // above is probably enough... but one can never be too paranoid
     }
     else {
@@ -780,7 +973,7 @@ _.commandFramify = function (nodeId) {
 
 // ------------------------------------------------------------------
 _.commandPopupWindow = function (id, win) {
-    fb_log( "Open window "+id );
+    // fb_log( "Open window "+id );
     var feat = "resizable=yes,dependent=yes";
     if( win.width ) {
         feat += ",width="+win.width;
@@ -795,13 +988,11 @@ _.commandPopupWindow = function (id, win) {
     feat += ",scrollbars="+( win.status ? 'yes' : 'no' );
 
     if( ! win.url ) {
-        var port       = location.port;
-        port           = port ? ':' + port : '';
-        win.url = 'http://' + location.hostname + port + 
-            "/popup.xul?SID=" + $application.getSID() +
-                    "&app=" + $application.applicationName;
+        win.url = $application.baseURI();
+        win.url = win.url.replace( "/xul", 
+                         "/popup.xul?SID=" + $application.getSID() +
+                         "&app=" + $application.applicationName );
     }
-
     $application.openWindow( win.url, id, feat );
 }
 
@@ -814,105 +1005,150 @@ _.commandCloseWindow = function (id) {
 // private --------------------------------------------------------------------
 
 _.getNode = function (nodeId, safe) {
-	var node = this._getNode(nodeId);
-	if ( !node && !safe ) Throw("Cannot find node by Id: " + nodeId);
-	return node;
+    var node = this._getNode(nodeId);
+    if ( !node && !safe ) Throw("Cannot find node by Id: " + nodeId);
+    return node;
 }
 
 _._getNode = function (nodeId) {
     if( this.windowId == nodeId ) {
-        return this.document.firstChild;
+        return this.windowEl;
     }
     else {
         return this.document.getElementById(nodeId);
     }
-}	
+}   
 
 _.createElement = function (tagName, nodeId) {
-	var element = tagName.match(/^html_/)?
-		this.document.createElementNS(
-			'http://www.w3.org/1999/xhtml',
-			tagName.replace(/^html_/, '')
-		):
-		this.document.createElementNS(
-			'http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul',
-			tagName
-		);
-	element.id = nodeId;
-	return element;
+    var NS = $application.xulNS;
+    if( tagName.match(/^html_/) ) {
+        NS = $application.htmlNS;
+        tagName = tagName.replace(/^html_/, '');
+    }
+
+    var element = this.document.createElementNS( NS, tagName );
+    element.id = nodeId;
+    return element;
 }
 
 _.addElementAtIndex = function ( parent, child ) {
 
-	var index = child.getAttribute('_addAtIndex');
-	child.removeAttribute('_addAtIndex');
-	
-	if (index == null) {
-		parent.appendChild(child);
-		return;
-	}
-	var count    = parent.childNodes.length;
-	if (count == 0 || index >= count ) {
-		parent.appendChild( child );
+    var index = child.getAttribute('_addAtIndex');
+    child.removeAttribute('_addAtIndex');
+    
+    var count = parent.childNodes.length;
+    if (index == null || index < 0 || count == 0 || index >= count ) {
+        parent.appendChild(child);
+        return;
     }
-	else {
-		parent.insertBefore( child, parent.childNodes[ index ] );
+    else {
+        parent.insertBefore( child, parent.childNodes[ index ] );
+    }
+}
+
+// Node is being hidden, we clear its content
+// This is a work around for Mozilla keeping old values in XBL nodes.
+// This technique sucks, because our node is now out of sync with the 
+// POE::XUL::Node.  This should propably be implemented in the widgets, but...
+_.clearGroupbox = function ( node ) {
+    if( node.nodeName != '#text' )
+        this.clearNodes( node );
+}
+
+_.clearNodes = function ( node ) {
+    try {
+        if( node.hasAttribute( 'value' ) ) {
+            this.commandSetNode( node.id, 'value', '' );
+        }
+    }
+    catch (e) {
+        fb_log( "Failed to setNode %s", node.id );
+        fb_log(node);
+        fb_log(e);
+    }
+    if( ! node.hasChildNodes() )
+        return;
+
+    var child = node.firstChild;
+    while( child ) {
+        if( child.nodeName != '#text' )
+            this.clearNodes( child );
+        child = child.nextSibling;
     }
 }
 
 _.resetBuffers = function () {
-	this.newNodeRoots = []; // top level parent nodes of those not yet added
-	this.newNodes     = []; // nodes not yet added to document
-	this.lateCommands = []; // commands to run at latest possible time
+    this.newNodeRoots = {}; // top level parent nodes of those not yet added
+    this.newNodes     = []; // nodes not yet added to document
+    this.lateCommands = []; // commands to run at latest possible time
     this.changedIDs   = {}; // old ID -> new ID
 }
 
 // These attributes should be true or non-existant
-POEXUL_Runner.boleanAttributes = {
-	'disabled'     : true,
-	'multiline'    : true,
-	'readonly'     : true,
-	'checked'      : true,
-	'selected'     : true,
-	'hidden'       : true,
-	'default'      : true,
-	'grippyhidden' : true
+POEXUL_Runner.booleanAttributes = {
+    'disabled'     : true,
+    'multiline'    : true,
+    'readonly'     : true,
+    'checked'      : true,
+    'selected'     : true,
+    'hidden'       : true,
+    'default'      : true,
+    'grippyhidden' : true
 };
 
 // These attributes should be set as node properties ( node["key"] = value )
 POEXUL_Runner.propertyAttributes = {
-	'selectedIndex' : true,
+    'selectedIndex' : true,
     'scrollTop'     : true,
-    'scrollBottom'  : true
+    'scrollBottom'  : true,
+    'callback'      : true,
+//    'label'         : true,
+//    'value'         : true,
+//  'selected'      : true,
+    'checked'       : true
 };
+
+// These attributes should be set as an attribute, and then as a property
+POEXUL_Runner.propertyAlso = {
+//    'label'         : true,
+    'value'         : true,
+//  'selected'      : true,
+};
+
+
 // These attributes should be set as node properties after the node is
 // part of the document (ie, after XBL activation), before that, as attributes
+// PROBLEM : there is a race condition if we get the command after the node
+// is added to the DOM, but before the XBL is fully activated.  Grrrr...
 POEXUL_Runner.freshAttributes = {
-	'value'         : true,
+    'value'         : true,
     'splitTop'      : true,
-	'id'            : true,
+    'id'            : true,
+    'checked'       : true,
+    'selected'      : true,
+    'disabled'      : true
 };
 
 // These attributes should be set after the node is added to the document
 POEXUL_Runner.lateAttributes = {
-	'selectedIndex' : true,
-	'sizeToContent' : true,
-	'focus'         : true,
-	'blur'          : true,
+    'selectedIndex' : true,
+    'sizeToContent' : true,
+    'focus'         : true,
+    'blur'          : true,
     'scrollTop'     : true,
     'scrollBottom'  : true,
     'recalc'        : true
 };
 // These aren't in fact attributes, but methods
 POEXUL_Runner.simpleMethodAttributes = {
-	'sizeToContent'       : true,
-	'ensureIndexIsVisible': true,
+    'sizeToContent'       : true,
+    'ensureIndexIsVisible': true,
     'focus'               : true,
-	'blur'                : true,
+    'blur'                : true,
     'recalc'              : true
 };
 
 POEXUL_Runner.activateEvent = {
-	'clickable'       : 'click',
+    'clickable'       : 'click',
 };
 

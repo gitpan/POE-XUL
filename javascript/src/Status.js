@@ -10,6 +10,7 @@ function POEXUL_Status () {
         return POEXUL_Status.singleton;
 
     this.msg = '';
+    this.noStatus = 0;
 
     $status = this;
 }
@@ -20,10 +21,14 @@ var _ = POEXUL_Status.prototype;
 // ------------------------------------------------------------------
 _.element = function () {
     var el = $( 'POEXUL-Status' );
-    if( el && el.setTitle )
+    if( el && el.setTitle ) {
+        this.noStatus = 0;
         return el;
-    else 
+    }
+    else if( ! this.noStatus ) {
+        this.noStatus = 1;
         fb_log( "Can't find POEXUL-Status" );
+    }
     return;
 }
 
@@ -33,7 +38,12 @@ _.title = function ( msg ) {
     if( el ) {
         el.setTitle( msg );
         fb_log( "title=" + msg );
-        window.document.firstChild.setAttribute( 'title', msg );
+        window.document.title = msg;
+        var wel = window.document.getElementsByTagNameNS( 
+                            $application.xulNS, 'window' );
+        if( wel ) {
+            wel[0].setAttribute( 'title', msg );
+        }
         this.show();
     }
     else {
@@ -62,6 +72,7 @@ _.show = function () {
     // fb_log( 'status.show' );
     if( el ) {
         Element.show( el )
+        el.style.zIndex = 100;
     }
     else {
         this.title( this.msg );

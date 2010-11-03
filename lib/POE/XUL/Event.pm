@@ -1,6 +1,6 @@
 package POE::XUL::Event;
-# $Id: Event.pm 1023 2008-05-24 03:10:20Z fil $
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# $Id: Event.pm 1566 2010-11-03 03:13:32Z fil $
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
 use strict;
@@ -11,18 +11,22 @@ use POE::XUL::Logging;
 
 use constant DEBUG => 0;
 
+our $VERSION = '0.0600';
+
 ##############################################################
 sub new
 {
-	my( $package, $event_type, $CM, $resp ) = @_;
+	my( $package, $event_type, $CM, $response ) = @_;
 
     croak "Why didn't you give me a ChangeManager" unless $CM;
-    croak "Why didn't you give me a HTTP::Response" unless $resp;
+    croak "Why didn't you give me a HTTP::Response" unless $response;
 
     my $self = bless {
-            event_type => $event_type,
-            CM         => $CM,
-            resp       => $resp
+            event_type  => $event_type,
+            CM          => $CM,
+            response    => $response,
+            canceled    => 0,
+            done        => 0
         }, $package;
 
     $CM->request_start( $self );
@@ -37,6 +41,7 @@ sub __init
 {
     my( $self, $req ) = @_;
 
+    $self->{app} = $req->param( 'app' );
     if( $self->{event_type} ne 'connect' and 
                 $self->{event_type} ne 'disconnect' and
                 $self->{event_type} ne 'boot' ) {
@@ -66,7 +71,11 @@ sub __source_id
     my( $self, $id ) = @_;
 
     my $node = $self->{CM}->getElementById( $id );
-    return "Can't find source node $id" unless $node;
+    unless( $node ) {
+        # xwarn "known = ", join ',', grep { $_ !~ /PXN/ }
+        #                             keys %{ $self->{CM}{nodes} };
+        return "Can't find source node $id";
+    }
     $self->{source} = $node;
     $self->{source_id} = $id;
     return;
@@ -93,13 +102,6 @@ sub __window_id
 }
 
 ##############################################################
-sub coderef
-{
-    my( $self, $coderef ) = @_;
-    $self->{coderef} = $coderef;
-}
-
-##############################################################
 # Accessors
 sub set { $_[0]->{ $_[1] } = $_[2] }
 sub get { $_[0]->{ $_[1] } }
@@ -114,6 +116,11 @@ sub session {
     shift->SID( @_ ) 
 }
 
+sub resp { $_[0]->{response} }
+sub response { $_[0]->{response} }
+sub req  { $_[0]->{response}->connection->request }
+sub request { $_[0]->{response}->connection->request }
+
 # general accessor/mutator
 sub AUTOLOAD {
 	my $self = shift;
@@ -127,13 +134,25 @@ sub AUTOLOAD {
 *target = \&source;
 
 ##############################################################
+sub coderef
+{
+    my( $self, $coderef ) = @_;
+    $self->{coderef} = $coderef;
+}
+
+
+
+
+##############################################################
 sub run
 {
     my( $self ) = @_;
 
+    local $POE::XUL::Logging::SINGLETON->{app} = $self->{app};
 
-    # Keep the Node in sync with the browser elements
-    my $method = "handle_" . $self->event;
+    # Tell the ChangeManager to keep the Node in sync with the browser
+    # elements.  This is where event "side-effects" happen
+    my $method = "handle_" . $self->event; 
     my $CMm = $self->{CM}->can( $method );
 
     if( $CMm ) {
@@ -159,6 +178,7 @@ sub run
 sub do_event
 {
     my( $self ) = @_;
+    local $POE::XUL::Logging::SINGLETON->{app} = $self->{app};
 
     my $bt = delete $self->{bubble_to};
     foreach my $N ( $self->{source}, $bt ) {
@@ -189,33 +209,15 @@ sub do_event
 
 
 ##############################################################
-sub handled
-{
-    my( $self ) = @_;
-
-    $self->done( 1 );
-    DEBUG and xcarp "Event finished";
-
-    $self->flush();
-}
-*finish = \&handled;
-
-##############################################################
-sub defer
-{
-    my( $self ) = @_;
-    $self->done( 0 );
-}
-
-##############################################################
 sub wrap
 {
     my( $self, $coderef ) = @_;
+    local $POE::XUL::Logging::SINGLETON->{app} = $self->{app};
 
     eval {
         local $SIG{__DIE__} = 'DEFAULT';
         DEBUG and 
-            xcarp "Wrapping user code";
+            xcarp "Wrapping user code CM=$self->{CM}";
         local $POE::XUL::Node::CM = $self->{CM};
         $coderef->( $self );
     };
@@ -228,6 +230,74 @@ sub wrap
 }
 
 ##############################################################
+## Make sure it is still possible to respond to this event
+sub __respondable
+{
+    my( $self, $action ) = @_;
+    if( $self->{canceled} ) {
+        xcarp2 "Attempt to $action a canceled event";
+        return;
+    }
+    if( $self->has_response ) {
+        xcarp2 "Attempt to $action to a responded event";
+        return;
+    }
+    return 1;
+}
+
+
+##############################################################
+sub cancel
+{
+    my( $self ) = @_;
+    $self->{canceled} = 1;
+    unless( $self->has_response ) {
+        xlog "Event canceled before CM responded";
+        $self->{done} = 1;
+    }
+    else {
+        xlog "Event canceled";
+    }
+}
+
+##############################################################
+sub canceled
+{
+    my( $self ) = @_;
+    return $self->{canceled};
+}
+
+##############################################################
+sub handled
+{
+    my( $self ) = @_;
+    local $POE::XUL::Logging::SINGLETON->{app} = $self->{app};
+
+    $self->done( 1 );
+    DEBUG and xcarp "Event finished";
+
+    $self->flush();
+}
+*finish = \&handled;
+
+##############################################################
+sub has_response
+{
+    my( $self ) = @_;
+    return 1 unless $self->{CM};
+    return 1 if $self->{CM}->responded;
+    return;
+}
+
+##############################################################
+sub defer
+{
+    my( $self ) = @_;
+    return unless $self->__respondable( 'defer' );
+    $self->done( 0 );
+}
+
+##############################################################
 sub flushed
 {
     my( $self ) = @_;
@@ -235,29 +305,48 @@ sub flushed
 }
 
 ##############################################################
+# Flush is called from Controler->xul_request or from Event->finish/flush
 sub flush
 {
     my( $self ) = @_;
+    local $POE::XUL::Logging::SINGLETON->{app} = $self->{app};
 
     if( $self->{is_flushed} or not $self->{CM} ) {
         Carp::confess "This event was already flushed!";
 #        $self->dispose if $self->{CM}; # TODO is this a good idea?
         return;
     }
-    DEBUG and xdebug "$self->dispose";
-    delete $self->{CM}{current_event};      # TODO CM->request_done does this
-    $self->{CM}->response( $self->{resp} ); # TODO don't do this in case of error
+
+    return unless $self->__respondable( 'flush' );
     $self->{is_flushed} = 1;
+
+    DEBUG and xdebug "$self->flush";
+
+    # TODO don't do this in case of error
+    $self->{CM}->response( $self->{response} ); 
 }
 
 ##############################################################
 sub wrapped_error
 {
     my( $self, $err ) = @_;
+    local $POE::XUL::Logging::SINGLETON->{app} = $self->{app};
     DEBUG and xdebug "wrapped_error via $self->{CM} ($err)";
-    $self->{CM}->error_response( $self->{resp}, $err );
+    unless( $self->{CM} ) {
+        xlog "No CM for error response: ", Dumper $err;
+        return;
+    }
+    $self->{CM}->error_response( $self->{response}, $err );
 }
 
+
+##############################################################
+sub data_response
+{
+    my( $self, $data ) = @_;
+    local $POE::XUL::Logging::SINGLETON->{app} = $self->{app};
+    $self->{CM}->data_response( $self->{response}, $data );
+}
 
 ##############################################################
 sub dispose
@@ -265,7 +354,7 @@ sub dispose
     my( $self ) = @_;
     $self->{is_flushed} = 1;
     delete $self->{CM};
-    delete $self->{resp};    
+    delete $self->{response};    
     DEBUG and xdebug "$self->dispose";
 }
 
@@ -391,6 +480,15 @@ POE::XUL::Application handlers are already wrapped.
 Returns true if the current event has already been flushed to the browser.
 Because L<POE::XUL> uses a synchronous-event-based model, an event may only
 be flushed once.  This, however, should change later at some point.
+
+=head2 data_reponse
+
+    $event->response->content_type( 'image/gif' );
+    $event->data_response( $data );
+
+Allows you to send any data as a response to an event.  Especially useful
+for <image> with C<src> attribute set to a callback.  C<data_response> will
+set the C<Content-Length> header.
 
 =head1 DOM EVENTS
 
@@ -544,7 +642,7 @@ Based on XUL::Node::Event by Ran Eilam.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2010 by Philip Gwyn.  All rights reserved;
 
 Copyright 2003-2004 Ran Eilam. All rights reserved.
 

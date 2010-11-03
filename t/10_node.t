@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 10_node.t 1017 2008-05-23 19:15:06Z fil $
+# $Id: 10_node.t 1191 2009-02-12 18:28:41Z fil $
 
 use strict;
 use warnings;
@@ -7,7 +7,7 @@ use warnings;
 use POE::XUL::Node;
 use POE::XUL::Constants;
 
-use Test::More ( tests=> 82 );
+use Test::More ( tests=> 88 );
 
 my @tags = qw( 
     ArrowScrollBox Box Button Caption CheckBox ColorPicker Column Columns
@@ -136,3 +136,32 @@ $lb->show;
 $css = $lb->style;
 @m=($css =~ /display: *none/g);
 is( 0+@m, 0, "Shown" );
+
+##########################
+$lb->editable( 1 );
+ok( $lb->editable, "Setting editable with Perl true" );
+$lb->editable( 'false' );
+ok( !$lb->editable, "Setting editable with JS 'false'" );
+$lb->editable( 'true' );
+ok( $lb->editable, "Setting editable with JS 'true'" );
+$lb->editable( '' );
+ok( !$lb->editable, "Setting editable with Perl false" );
+
+############################
+$node = POE::XUL::Node->new( tag => 'box', honk=>'honk bonk', id=>'zippy' );
+is( $node->id, 'zippy', "ID set" );
+#use Data::Dumper;
+#warn Dumper $node;
+$node = POE::XUL::Node->new( 
+  'Click' => bless( sub { "DUMMY" }, 'POE::Session::AnonEvent' ),
+  'class' => 'NOM_ CLIENT-NOM_',
+  'id' => 'CLIENT-NOM_',
+  'maxlength' => '10',
+  'name' => 'CLIENT-NOM_',
+  'search' => '!',
+  'search-tooltiptext' => 'Recherche de client',
+  'size' => -10,
+  'value' => ''
+);
+
+is( $node->id, 'CLIENT-NOM_', "ID set" );

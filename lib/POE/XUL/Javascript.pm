@@ -1,6 +1,8 @@
 package POE::XUL::Javascript;
 # $Id$
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
+
+use strict;
 
 
 1;
@@ -39,6 +41,15 @@ This documentation needs to be written
 
     $application.status( 'run' );
 
+=head2 Firebug
+
+POE::XUL includes wrappers for the most excelent
+L<Firebug|https://addons.mozilla.org/en-US/firefox/addon/1843> debugging
+extension.  You probably don't want to be writing XBL without Firebug.
+
+These wrappers check to see that firebug is installed before logging to its
+console.
+
 =head3 fb_log
 
     fb_log( "Short message for firebox's console" );
@@ -46,6 +57,12 @@ This documentation needs to be written
 Sends a message to the most excelent
 L<Firebug|https://addons.mozilla.org/en-US/firefox/addon/1843> debugging
 extension.  You probably don't want to be writing XBL without Firebug.
+
+=head3 fb_dir
+
+=head3 fb_time
+
+=head3 fb_timeEnd
 
 =head1 LIBRARIES
 
@@ -65,7 +82,7 @@ Based on XUL::Node by Ran Eilam.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2010 by Philip Gwyn.  All rights reserved;
 
 Copyright 2003-2004 Ran Eilam. All rights reserved.
 

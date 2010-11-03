@@ -13,5 +13,6 @@ use base 'POE::XUL::Application';
 
 sub boot
 {
+    Boot( "Hello world" );
     Window( Description( 'Hello world' ) );
 }

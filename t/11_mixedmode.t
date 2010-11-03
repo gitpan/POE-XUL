@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 11_mixedmode.t 338 2007-03-29 20:38:34Z fil $
+# $Id: 11_mixedmode.t 1346 2009-08-28 05:05:51Z fil $
 
 use strict;
 use warnings;
@@ -23,7 +23,9 @@ $node = Window(
 
 $xml = $node->as_xml;
 is( "$xml\n", <<XML, "TextNodes and so on" ) or die Dumper $node;
-<window><vbox><description>hello world</description></vbox><button><description>This is a button</description></button></window>
+<window><vbox>
+<description>hello world</description></vbox>
+<button><description>This is a button</description></button></window>
 XML
 
 ##########################
@@ -57,21 +59,27 @@ XML
 my $box = HBox( textNode => "hello world" );
 $xml = $box->as_xml;
 is( "$xml\n", <<XML, "More mixed-mode mania" ) or die Dumper $box;
-<hbox>hello world</hbox>
+<hbox>
+hello world</hbox>
+
 XML
 
 ##########################
 $box->textNode( 'honk' );
 $xml = $box->as_xml;
 is( "$xml\n", <<XML, "Changing a text node" ) or die Dumper $box;
-<hbox>honk</hbox>
+<hbox>
+honk</hbox>
+
 XML
 
 ##########################
 $box->textNode( $tn );
 $xml = $box->as_xml;
 is( "$xml\n", <<XML, "Changing a text node" ) or die Dumper $box;
-<hbox>MAN!</hbox>
+<hbox>
+MAN!</hbox>
+
 XML
 
 

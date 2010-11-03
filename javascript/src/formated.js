@@ -107,8 +107,8 @@ FormatedField.prototype.dispose = function () {
 
 // ------------------------------------------------------------------
 FormatedField.prototype.setInput = function (el) {
-//    console.log( "setInput " + this.xul_id );
-//    console.log( "input=" + el );
+//    fb_log( "setInput " + this.xul_id );
+//    fb_log( "input=" + el );
     this.input_element = el;
     // XUL elements created with XBL don't have IDs :-/
     if( el.id )
@@ -396,9 +396,9 @@ Object.extend( FormatedDate.prototype, FormatedField.prototype );
 // ------------------------------------------------------------------
 FormatedDate.prototype.validate = function ( on_submit ) {
     var input = this.input();
-//    console.log( "validate " + this.xul_id );
-//    console.log( "input=" + input );
-//    console.log( ".value=" + input.value );
+//    fb_log( "validate " + this.xul_id );
+//    fb_log( "input=" + input );
+//    fb_log( ".value=" + input.value );
     if( on_submit ) {
         this.set_default();
         if( this.required && input.value == '' )

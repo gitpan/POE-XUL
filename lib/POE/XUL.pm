@@ -1,6 +1,8 @@
-# Copyright 2007 by Philip Gwyn.  All rights reserved;
+# Copyright 2007-2010 by Philip Gwyn.  All rights reserved;
 
-our $VERSION = '0.0406';
+our $VERSION = '0.0600';
+
+use strict;
 
 __END__
 
@@ -68,16 +70,16 @@ toolkit in Perl.
 POE::XUL is pronounced similar to I<puzzle>.
 
 At the heart of POE::XUL is the concept of mirror objects.  That is, each
-XUL element exists as a Perl object (L<POE::XUL::Node>) in the server and as
-a DOM object in the client.  A ChangeManager on the server and the
-javascript client library are responsible for keeping the objects in sync. 
-Note that while all element attribute changes in the server are mirrored in
-the client, only the most important attributes (C<value>, C<selected>, ...)
-are mirrored from the client to the server.
+XUL element exists as a DOM node in the client and a Perl object
+(L<POE::XUL::Node>) in the server.  The ChangeManager on the server and the
+javascript client library are responsible for keeping both objects in sync. 
+However, while all attribute changes in the server are mirrored to the
+client, only the most important attributes (C<value>, C<selected>, ...) are
+mirrored from the client to the server.
 
 POE::XUL currently uses a syncronous, event-based model for updates.  This
 will be changed to an asyncronous, bidirectional model (aka
-L<comet|http://cometd.com/>) soon, I hope.
+L<comet|http://cometd.com/>) at some point.
 
 XUL is only supported by browsers from the mozilla project (Firefox and
 xulrunner).  While this limits POE::XUL's use for general web application,
@@ -136,58 +138,21 @@ Keeping the change manager visible to L<POE::XUL::Node> is the job
 of L<POE::XUL::Session> or L<POE::XUL::Event/wrap>.
 
 
-=head2 More details
-
-There are many layers POE::XUL.  Maybe too many.
-
-First off, the browser or xulrunner loads C<start.xul?AppName>, which loads
-the Javascript client library and any necessary CSS.  The client library
-sends a C<boot> event to the server using C<prototype.js>. 
-L<POE::Component::XUL> handles HTTP requests in the server.  For a boot
-request, it creates a L<POE::XUL::ChangeManager> for the application which
-is used by the event to capture any changes to L<POE::XUL::Node>.  The
-controler then spawns the application and calls its C<boot> state.  All
-nodes created during the boot request will have been noticed by the change
-manager.  These nodes are converted into JSON instructions by the
-ChangeManager, which are sent as the HTTP response. The JS client library
-decodes the JSON instructions, populating the XUL DOM tree with the new
-nodes.
-
-The user then interacts with the XUL elements, which will provoke DOM
-events. These events are turned into an AJAX request by the JS client
-library.  L<POE::Component::XUL> decodes these requests and hands them to the
-L<POE::XUL::Controler>.  The Controler creates and populates an
-L<POE::XUL::Event>.  The Event will get the change manager to handle any
-event I<side-effects>, such as setting C<value> of the target node.  The
-Event will then call any user-defined event listeners.  When the
-event is finished, the change manager converts any changes to the
-POE::XUL::Nodes to JSON instructions, which are sent as the HTTP response.
-The JS client library decodes the JSON instructions, modifying the XUL DOM
-tree as necessary.
-
-Understand?  Maybe the following diagram will help:
-
-                                        User
-                                         |
-    Firefox or xulrunner              DOM Node
-                                         |
-                                  +------+------+
-                                 /               \
-    JS client library          Event           Response
-                                \/                /\
-    HTTP/AJAX                 Request            JSON
-                                \/                /\
-    POE::Component::XUL       decode              ||
-    POE::XUL::Controler       create Event        ||
-    POE::XUL::Event           side effects       flush
-    POE::XUL::ChangeManger    record changes -> convert
-
-
 =head2 XBL
 
 You are encouraged to create your own XUL nodes with XBL.  To do so, you
 will need a custom C<start.xul> that loads the CSS that defines your XBL. 
-To create the nodes with C<POE::XUL::Node>
+To create the nodes with C<POE::XUL::Node>:
+
+    my $node = POE::XUL::Node->new( tag=>'mytag' );
+
+You would associate XBL with the following CSS:
+
+    mytag {
+        -moz-binding: url( 'my-xbl.xml#mytag' );
+    }
+
+See L<https://developer.mozilla.org/en/XBL> for XBL specification.
 
 =head2 Security
 
@@ -374,7 +339,7 @@ course, POE, by the illustrious Rocco Caputo.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2010 by Philip Gwyn.  All rights reserved;
 
 Copyright 2005 by David Davis and Teknikill Software;
 

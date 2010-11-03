@@ -1,6 +1,6 @@
 package POE::XUL::State;
-# $Id: State.pm 1023 2008-05-24 03:10:20Z fil $
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# $Id: State.pm 1566 2010-11-03 03:13:32Z fil $
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
 #
@@ -15,25 +15,43 @@ package POE::XUL::State;
 
 use strict;
 use warnings;
+
+use Scalar::Util qw( blessed );
 use Carp;
 
 use constant DEBUG => 0;
 
+our $VERSION = '0.0600';
 our $ID = 0;
 
 
 ##############################################################
 sub new 
 { 
-    my( $package ) = @_;
+    my( $package, $node ) = @_;
     my $self = bless {
             buffer => [], 
+            deferred_buffer => [], 
             is_new => 1, 
             is_destroyed => 0, 
             is_textnode => 0
         }, $package;
 
-    $self->{orig_id} = $self->{id} = 'PX' . $ID++;
+    my $id;
+    if( blessed $node and $node->can( 'getAttribute' ) and
+                     $node->getAttribute( 'id' ) ) {
+        $id = $node->getAttribute( 'id' );
+    }
+    else {
+        $id = 'PX' . $ID++;
+        if( $node ) {
+            # set the nodes attribute to the generated ID
+            # 2008/10 do NOT use setAttribute, it will call the CM which will
+            # try to build a new State.  Infinite recursion.
+            $node->{attributes}{id} ||= $id;
+        }
+    }
+    $self->{orig_id} = $self->{id} = $id;
 
     return $self;
 }
@@ -43,7 +61,8 @@ sub flush
 {
 	my( $self ) = @_;
 	my @out = $self->as_command;
-	$self->set_old;
+	$self->{is_new} = 0;
+    $self->{index} = delete $self->{trueindex} if defined $self->{trueindex};
 	$self->clear_buffer;
 	return @out;
 }
@@ -74,6 +93,17 @@ sub as_command {
     }
 }
 
+sub as_deferred_command {
+	my $self = shift;
+
+	my $is_new       = $self->{is_new};
+	my $is_destroyed = $self->{is_destroyed};
+
+    # TODO: this is probably a bad idea
+	return if $is_destroyed;
+    return $self->get_buffer_as_deferred_commands;
+}
+
 ##############################################################
 sub make_command_new 
 {
@@ -86,7 +116,9 @@ sub make_command_new
                 $self->get_tag, 
                 ( $self->get_parent_id || '' )
               );
-	push @cmd, $self->{index} if exists $self->{index};
+    if( exists $self->{index} ) {
+        push @cmd, $self->{index};
+    }
 
     delete $self->{orig_id};
 
@@ -105,8 +137,6 @@ sub make_command_textnode
 {
 	my( $self ) = @_;
     return unless $self->{buffer} and $self->{buffer}[-1];
-    # use Data::Dumper;
-    # warn Dumper $self->{buffer};
     my $ret = [ 'textnode',
                 $self->get_parent_id, 
                 $self->{index},
@@ -167,6 +197,14 @@ sub make_command_set
 }
 
 #############################################################
+sub make_command_method
+{
+	my($self, $key, $args) = @_;
+
+    return [ 'method', $self->{id}, $key, $args ];
+}
+
+#############################################################
 sub make_command_style
 {
 	my($self, $property, $value) = @_;
@@ -188,11 +226,28 @@ sub make_command_remove
 sub get_buffer_as_commands 
 {
 	my( $self ) = @_;
-    # use Data::Dumper;
-    # warn Dumper $self->{buffer};
     return $self->get_buffer;
 }
 
+#############################################################
+sub get_buffer_as_deferred_commands 
+{
+	my( $self ) = @_;
+
+    # Just in case the ID changed since the command was added 
+    # to the deferred buffer
+    foreach my $cmd ( $self->get_deferred_buffer ) {
+        $cmd->[1] = $self->{id};
+    }
+    return $self->get_deferred_buffer;
+}
+
+sub set_trueindex
+{
+    my( $self, $index ) = @_;
+
+    $self->{trueindex} = $index;
+}
 
 
 #############################################################
@@ -202,7 +257,13 @@ sub set_attribute
     if( $key eq 'id' and ($self->{orig_id}||'' ) eq $value ) {
         return;
     }
-    push @{$self->{buffer}}, $self->make_command_set( $key, $value );
+    my $cmd = $self->make_command_set( $key, $value );
+    if( $key eq 'selectedIndex' ) {
+        push @{ $self->{deferred_buffer} }, $cmd;
+    }
+    else {
+        push @{$self->{buffer}}, $cmd;
+    }
     return;
 }
 
@@ -212,6 +273,14 @@ sub remove_attribute
     my( $self, $key ) = @_;
 
     push @{$self->{buffer}}, $self->make_command_remove( $key );
+    return;
+}
+
+#############################################################
+sub method_call
+{ 
+    my( $self, $key, $args ) = @_;
+    push @{$self->{buffer}}, $self->make_command_method( $key, $args );
     return;
 }
 
@@ -258,6 +327,7 @@ sub id            { $_[0]->{id}           }
 sub get_tag       { $_[0]->{tag}          }
 sub is_new        { $_[0]->{is_new}       }
 sub get_buffer    { @{$_[0]->{buffer}}    }
+sub get_deferred_buffer { @{ $_[0]->{deferred_buffer} } }
 sub is_textnode   { $_[0]->{is_textnode}  }
 sub get_parent_id { 
     my( $self ) = @_;
@@ -271,7 +341,8 @@ sub set_id        { delete $_[0]->{default_id}; $_[0]->{id}           = $_[1]   
 sub set_tag       { $_[0]->{tag}          = lc $_[1]        }
 sub set_old       { $_[0]->{is_new}       = 0               }
 sub set_index     { $_[0]->{index}        = $_[1]           }
-sub clear_buffer  { $_[0]->{buffer}       = []              }
+sub clear_buffer  { $_[0]->{buffer}       = [];
+                    $_[0]->{deferred_buffer} = [];          }
 sub set_destroyed { $_[0]->{is_destroyed} = 1               }
 sub set_textnode  { $_[0]->{is_textnode} = 1                }
 # sub set_parent_id { $_[0]->{parent_id}    = $_[1]           }

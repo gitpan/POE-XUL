@@ -38,7 +38,7 @@ POE::XUL::POE - A POE::XUL application that doesn't use POE::XUL::Application
 
     #####
     sub boot {
-        my( $self, $kernel, $event ) = @_[ OBJECT, KERNEL, ARG0 ];
+        my( $self, $kernel, $event, $app ) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
         $self->{D} = Description( "do the following" );
         $self->{W} = Window( HBox( $self->{D}, 
                                    Button( label => "click me", 

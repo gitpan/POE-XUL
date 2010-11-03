@@ -7,6 +7,8 @@ sub POE::Kernel::CATCH_EXCEPTIONS () { 0 }
 use POE;
 use POE::Component::XUL;
 
+# warn "$$: ", join "\n", map { "$_: $ENV{$_}" } sort keys %ENV;
+
 my $port = shift;
 my $root = shift;
 POE::Component::XUL->spawn( {
@@ -130,6 +132,7 @@ use POE;
 
 use POE::XUL::Node;
 use POE::XUL::Constants;
+use POE::XUL::Logging;
 
 use constant DEBUG => 0;
 
@@ -179,7 +182,8 @@ sub Clear
     my( $self, $kernel, $session, $event ) = 
                 @_[ OBJECT, KERNEL, SESSION, ARG0 ];
 
-    DEBUG and warn "# Clear";
+    DEBUG and 
+        xwarn "# Clear";
     
     $self->recolour( 'white' );
 

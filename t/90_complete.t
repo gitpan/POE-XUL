@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 90_complete.t 1023 2008-05-24 03:10:20Z fil $
+# $Id: 90_complete.t 1192 2009-02-12 18:38:58Z fil $
 
 use strict;
 use warnings;
@@ -141,12 +141,17 @@ ok( $I, "Found the selected item" );
 is( $I->{label}, "Bears", " ... and it's bears" )
         or die Dumper $ML;
 
-ok( $I->{selected}, " ... and it's selected" )
-        or die Dumper $ML;
+my $other;
 
-my $other = $ML->{zC}[0]{zC}[ 0 ];
-ok( !$other->{selected}, " ... and the other one isn't" )
-        or die Dumper $ML;
+SKIP: {
+    skip "Side-effects no longer echoed back to browser", 2;
+    ok( $I->{selected}, " ... and it's selected" )
+            or die Dumper $ML;
+
+    $other = $ML->{zC}[0]{zC}[ 0 ];
+    ok( !$other->{selected}, " ... and the other one isn't" )
+            or die Dumper $ML;
+}
 
 ###########
 $ML->{selectedIndex} = 0;       # Lions
@@ -160,12 +165,15 @@ ok( $I, "Found the selected item" );
 is( $I->{label}, "Lions", " ... and it's lions" )
         or die Dumper $ML;
 
-ok( $I->{selected}, " ... and it's selected" )
+SKIP: {
+    skip "Side-effects no longer echoed back to browser", 2;
+    ok( $I->{selected}, " ... and it's selected" )
         or die Dumper $ML;
 
-$other = $ML->{zC}[0]{zC}[ 2 ];
-ok( !exists $other->{selected}, " ... and the other one isn't" )
+    $other = $ML->{zC}[0]{zC}[ 2 ];
+    ok( !exists $other->{selected}, " ... and the other one isn't" )
         or die Dumper $ML;
+}
 
 
 
@@ -177,13 +185,14 @@ ok( $MC, "Found the Clear button" )
                 or die "We need that button!";
 $resp = Click( $browser, $MC );
 $data = $browser->decode_resp( $resp, 'clear messages' );
+
 $browser->handle_resp( $data, 'clear messages' );
 
 $text = Dumper $message;
 
 my $count = () = ($text =~ /nodeValue/g);
 is( $count, 1, "Only one message" )
-            or die $text;
+            or die $text, Dumper $resp;
 ok( ($text =~ /hello world/), " ... and it's the one we want" )
             or die $text;
 
@@ -231,7 +240,10 @@ ok( ($text =~/background-color: violet;/), " ... it's in violet" );
 
 #########
 $R = RadioSelected( $RG1 );
-is( $R->{label}, 'Violet', "Start wearing purple all the time" );
+SKIP: {
+    skip "Side-effects no longer echoed back to browser", 1;
+    is( $R->{label}, 'Violet', "Start wearing purple all the time" );
+}
 
 #########
 
@@ -260,7 +272,10 @@ $resp = Select( $browser, $SB );
 $data = $browser->decode_resp( $resp, 'select Cosmo' );
 $browser->handle_resp( $data, 'select Cosmo' );
 
-is( $Cosmo->{selected}, 'true', "Cosmo was selected" );
+SKIP: {
+    skip "Side-effects no longer echoed back to browser", 1;
+    is( $Cosmo->{selected}, 'true', "Cosmo was selected" );
+}
 
 $text = Dumper $message;
 
@@ -275,9 +290,11 @@ $resp = Select( $browser, $SB );
 $data = $browser->decode_resp( $resp, 'select Butter' );
 $browser->handle_resp( $data, 'select Butter' );
 
-is( $Butter->{selected}, 'true', "Butter was selected" );
-is( $Cosmo->{selected}, undef(), " ... and cosmo isn't" );
-
+SKIP: {
+    skip "Side-effects no longer echoed back to browser", 2;
+    is( $Butter->{selected}, 'true', "Butter was selected" );
+    is( $Cosmo->{selected}, undef(), " ... and cosmo isn't" );
+}
 $text = Dumper $message;
 
 $count = () = ($text =~ /Butter-Male-Orange/g);

@@ -6,6 +6,7 @@
     orient="vertical"
     ID="E1"
 >
+
 <script type="text/javascript" src="javascript/NS6lib.js"></script>
 <script type="text/javascript" src="javascript/prototype.js"></script>
 <script type="text/javascript" src="javascript/POE-XUL.js"></script>

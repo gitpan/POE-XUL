@@ -1,6 +1,6 @@
 package POE::XUL::Node;
-# $Id: Node.pm 1023 2008-05-24 03:10:20Z fil $
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# $Id: Node.pm 1566 2010-11-03 03:13:32Z fil $
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
 
@@ -14,22 +14,27 @@ use POE::XUL::TextNode;
 use POE::XUL::CDATA;
 use POE::XUL::Style;
 use POE::XUL::Window;
-use Scalar::Util qw( blessed );
+use Storable qw( dclone );
 use HTML::Entities qw( encode_entities_numeric );
 
 use constant DEBUG => 0;
 
-our $VERSION = '0.05';
+our $VERSION = '0.0600';
 our $CM;
+
+my $ID = 0;
 
 my @XUL_ELEMENTS = qw(
       ArrowScrollBox Box Button Caption CheckBox ColorPicker Column Columns
       Deck Description Grid Grippy GroupBox HBox Image Label ListBox
       ListCell ListCol ListCols ListHead ListHeader ListItem Menu MenuBar
       MenuItem MenuList MenuPopup MenuSeparator ProgressMeter Radio
-      RadioGroup Row Rows Seperator Spacer Splitter Stack StatusBar
+      RadioGroup Row Rows ScrollBar Seperator Spacer Splitter Stack StatusBar
       StatusBarPanel Tab TabBox TabPanel TabPanels Tabs TextBox ToolBar
       ToolBarButton ToolBarSeperator ToolBox VBox Window
+
+      Tree TreeChildren TreeItem TreeRow TreeCols TreeCol TreeCell
+      TreeSeparator Template Rule 
 );
 
 # my %XUL_ELEMENTS = map { $_ => 1 } @XUL_ELEMENTS;
@@ -54,6 +59,7 @@ my %LOGICAL_ATTS = (
         disabled => 1, 
         autoFill => 1,
         autocheck => 1,
+        editable => 1,
 #        checked => 1
     );
 
@@ -91,14 +97,18 @@ sub new
 	my ($class, @params) = @_;
 
 	my $self;
-    if( $params[0] eq 'tag' and $params[1] eq 'window' ) {
+    if( ($params[0]||'') eq 'tag' and lc($params[1]||'') eq 'window' ) {
         $self = bless {attributes => {}, children => [], events => {}}, 
                         'POE::XUL::Window';
     } else {
         $self = bless {attributes => {}, children => [], events => {}}, $class;
     }
 
-#    POE::XUL::Session::Delegate::__check_ref( 'new1', $self );
+    my $id;
+    ( $id, @params ) = $self->__find_id( @params );
+
+    $id = $self->__auto_id( $id );
+    $CM->before_creation( $self ) if $CM;
 
     if( DEBUG and not $CM and $INC{'POE/XUL/ChangeManager.pm'} ) {
         Carp::cluck "Building a POE::XUL::Node, but no ChangeManager avaiable";
@@ -115,7 +125,7 @@ sub new
             $self->appendChild( shift @params );
         }
 		elsif ($param =~ /^[a-z]/) { 
-            $self->set_attribute( $param => shift @params );
+            $self->setAttribute( $param => shift @params );
         }
 		elsif ($param =~ /^[A-Z]/) { 
             $self->attach($param => shift @params );
@@ -124,11 +134,29 @@ sub new
             croak "unrecognized param: [$param]" 
         }
 	}
-#    POE::XUL::Session::Delegate::__check_ref( 'new2', $self );
-    $CM->after_creation( $self ) if $CM;
-#    POE::XUL::Session::Delegate::__check_ref( 'new3', $self );
 
 	return $self;
+}
+
+##############################################################
+# Scan ->new()'s parameters, trying to pull out an ID
+sub __find_id
+{
+    my( $self, @params ) = @_;
+    my( $id, @out );
+	while (my $param = shift @params) {
+		if( ref $param or $param =~ /\s/ or 0==@params ) {
+            push @out, $param;
+        }
+		else {
+            if( $param eq 'id' ) { 
+                $id = shift @params;
+                next;
+            }
+            push @out, $param, shift @params;
+        }
+	}
+    return ( $id, @out );
 }
 
 ##############################################################
@@ -173,7 +201,7 @@ sub pxInstructions
     my( $self, @inst ) = @_;
     unless( $CM ) {
         unless( $INC{ 'Test/More.pm' } ) {
-            carp "There is no ChangeManager.  Instructions ignored.";
+            # carp "There is no ChangeManager.  Instructions ignored.";
         }
         return;
     }
@@ -185,6 +213,21 @@ sub pxInstructions
     return $rv;
 }
 
+
+##############################################################
+## Assign an ID as soon as possible, so that the CM and State
+## will see it
+sub __auto_id
+{
+    my( $self, $id ) = @_;
+    unless( $id ) {
+        $id = "PXN$ID";
+        $ID++;
+        $self->{default_id} = $id;
+    }
+    $self->{attributes}{id} = $id;
+    return $id;
+}
 
 ##############################################################
 sub build_text_node
@@ -203,6 +246,7 @@ sub textNode
 {
     my( $self, $text ) = @_;
 
+    # Find the last text node
     my $old;
     foreach my $C ( $self->children ) {
         next unless $C->isa( 'POE::XUL::TextNode' );
@@ -249,20 +293,45 @@ sub getItemAtIndex
 }
 *get_item = \&getItemAtIndex;
 
+# attribute-like method invocation --------------------------------------------
+sub mk_method
+{
+    my( $name ) = @_;
+    return sub { 
+            my $self = shift;
+            return unless $CM;
+            $CM->after_method_call( $self, $name, [@_] );
+        };
+}
+*scrollTo      = mk_method( 'scrollTo' );
+*scrollBy      = mk_method( 'scrollBy' );
+*scrollToLine  = mk_method( 'scrollToLine' );
+*scrollByLine  = mk_method( 'scrollByLine' );
+*scrollByPage  = mk_method( 'scrollByPage' );
+*scrollByIndex = mk_method( 'scrollByIndex' );
+
+
 # attribute handling ----------------------------------------------------------
 
 ##############################################################
 sub attributes    
 { 
     my( $self ) = @_;
-    return %{$self->{attributes}} if wantarray;
-    return $self->{attributes};
+    my $ret = dclone $self->{attributes};
+    return %$ret if wantarray;
+    return $ret;
 }
 
 ##############################################################
 sub get_attribute 
 { 
     my( $self, $key ) = @_;
+    if( $LOGICAL_ATTS{ $key } ) {
+        return unless $self->{attributes}{$key};
+        # 'false' is still true, in Perl
+        return if $self->{attributes}{$key} eq 'false';
+    }
+
     return $self->style if $key eq 'style';
     return $self->{attributes}{$key};
 }
@@ -281,16 +350,21 @@ sub set_attribute
     }
 
     if( $LOGICAL_ATTS{ $key } ) {
-        unless( $value ) {
+        if( ! $value or $value eq 'false' ) {
             $self->remove_attribute( $key );
-            return;     # TODO: after_set_attribute needs to be called, no?
+            return;
+            # remove_attribute() informs the CM, we don't have to
         }
-        $value = $value ? 'true' : 'false';
-        
+        # 2008-09 : the following is a tad silly...
+        $value = $value ? 'true' : 'false';        
     }
 
     if( DEBUG and $key eq 'id' ) {
         carp $self->id, ".$key=$value";
+    }
+
+    if( $key eq 'value' ) { # and $self->tag eq 'menulist' ) {
+            # Carp::cluck( $self->tag . ".value=$value" );
     }
 
     $self->{attributes}{$key} = $value;
@@ -303,6 +377,9 @@ sub set_attribute
 sub remove_attribute 
 { 
     my( $self, $key ) = @_;
+#    if( $key eq 'value' and $self->tag eq 'menulist' ) {
+#        Carp::cluck( $self->tag . ".removeAttribute('value')" );
+#    }
     croak "You may not remove the tag attribute" if $key eq 'tag';
     $CM->after_remove_attribute( $self, $key ) if $CM;
     delete $self->{attributes}{ $key }; 
@@ -314,7 +391,7 @@ sub is_window { 0 }
 
 ##############################################################
 *id = __mk_accessor( 'id' );
-#*tag = __mk_accessor( 'tag' );
+*tagName = __mk_accessor( 'tag' );
 #*textNode = __mk_accessor( 'textNode' );
 
 sub __mk_accessor
@@ -323,7 +400,7 @@ sub __mk_accessor
     return sub {
         my( $self, $value ) = @_;
         if( @_ == 2 ) {
-            return $self->set_attribute( $tag, $value );
+            return $self->setAttribute( $tag, $value );
         }
         else {
             return $self->{attributes}{$tag};
@@ -376,10 +453,10 @@ sub AUTOLOAD {
 #    Carp::confess $key;
     if( $key =~ /^[a-z]/ ) {
         if( @_ == 1 ) {
-            return $self->get_attribute( $key );
+            return $self->getAttribute( $key );
         }
         else {
-            return $self->set_attribute( $key, $value );
+            return $self->setAttribute( $key, $value );
         }
     }
     elsif( $key =~ /^[A-Z]/ ) {
@@ -499,10 +576,11 @@ sub get_child_index
 {
 	my ($self, $child) = @_;
 	my $index = 0;
-	my @children = @{$self->{children}};
-	$index++ until $index > @children || $child eq $children[$index];
-	croak 'child not in parent' unless $children[$index] eq $child;
-	return $index;
+    foreach my $C ( @{ $self->{children} } ) {
+        return $index if $child eq $C;
+        $index++;
+    }
+    confess 'child not in parent';
 }
 
 ##############################################################
@@ -518,12 +596,27 @@ sub _compute_child_and_index
 
 sub _add_child_at_index {
 	my ($self, $child, $index) = @_;
-    $CM->before__add_child_at_index( $self, $child, $index ) if $CM;
-    if( $index > $#{ $self->{children} } ) {
+    my $N = $#{ $self->{children} };
+    my $trueindex;
+    if( $index > $N ) {
+        $index = -1;
         push @{ $self->{children} }, $child;
+        $trueindex = $#{ $self->{children} };
     }
     else {
         splice @{$self->{children}}, $index, 0, $child;
+    }
+    if( $CM ) {
+        $CM->after__add_child_at_index( $self, $child, $index );
+        # after__add_child needs $index to be -1 for appends, so that they
+        # work in Runner.  However, the state needs to remember the real, true
+        # index, so we set it afterwards.  
+        # 2009-02: the problem with this is that the index might differ from
+        # what is happening in the client.  Client should send the index back
+        # to us.  TODO when we implement AJAX
+        if( defined $trueindex ) {
+            $CM->set_trueindex( $self, $child, $trueindex );
+        }
     }
 	return $child;
 }
@@ -609,18 +702,22 @@ sub as_xml {
 	my $attributes = $self->attributes_as_xml;
 	my $children   = $self->children_as_xml($level + 1);
 #	my $indent     = $self->get_indent($level);
-    return qq[<$tag$attributes${\( $children? ">$children</$tag": '/' )}>];
+    my $nl         = ( $tag =~ /^((h|v|group)box)|(grid|row|(field-(name|value)))$/ ? "\n" : "" );
+    return qq[<$tag$attributes${\( $children? ">$nl$children</$tag": '/' )}>$nl];
 }
 
 sub attributes_as_xml {
 	my $self       = shift;
 	my %attributes = $self->attributes;
 	my $xml        = '';
+
+    delete $attributes{id} if $self->{default_id} and 
+                              $attributes{id} eq $self->{default_id};
     
     foreach my $k ( keys %attributes ) {
         next if defined $attributes{ $k };
         warn $self->id."/$k is undef";
-        $self->$k( '' );
+        $attributes{ $k } = '';
     }
 	$xml .= qq[ $_='${\( encode_entities_numeric( $self->$_, "\x00-\x1f<>&\'\x80-\xff" ) )}']
 		for grep { $_ ne 'tag' and $_ ne 'textNode' } keys %attributes;
@@ -1021,8 +1118,8 @@ Like L</get_child>, but works for C<menulist> and C<menupopup>.
     my %hash = $node->attributes;
     my $hashref = $node->attributes;
 
-Note even if you manipulate C<$hashref> directly, changes will not be
-mirrored in the DOM node.
+Note that even if you manipulate C<$hashref> directly, changes will not be
+mirrored in the node.
 
 =head2 getAttribute / get_attribute
 
@@ -1141,7 +1238,7 @@ Based on work by Ran Eilam.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2009 by Philip Gwyn.  All rights reserved;
 
 Copyright 2003-2004 Ran Eilam. All rights reserved.
 

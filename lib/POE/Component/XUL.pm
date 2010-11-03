@@ -1,7 +1,7 @@
-package 
+package                     # Hide from CPAN indexer
     POE::Component::XUL;
-# $Id: XUL.pm 1023 2008-05-24 03:10:20Z fil $
-# Copyright Philip Gwyn 2007.  All rights reserved.
+# $Id: XUL.pm 1566 2010-11-03 03:13:32Z fil $
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 
 use strict;
 use warnings;
@@ -11,7 +11,8 @@ use File::Spec;
 use File::Basename;
 use HTTP::Date;
 use HTTP::Status;
-use HTML::Entities;
+use HTML::Entities qw( encode_entities_numeric );
+use I18N::AcceptLanguage;
 use IO::File;
 use MIME::Types;
 use POE;
@@ -27,14 +28,15 @@ use Socket qw( unpack_sockaddr_in );
 
 use Carp;
 
-our $VERSION = '0.04';
+our $VERSION = '0.0600';
 
 use constant DEBUG => 0;
 
 use vars qw( $HAVE_DEVEL_SIZE $HAVE_DATA_DUMPER $SINGLETON );
 BEGIN {
     $HAVE_DEVEL_SIZE = 0;
-    eval "use Devel::Size;";
+    eval "use " .           # Hide from CPANTS kwalitee
+         "Devel::Size;";
     $HAVE_DEVEL_SIZE = 1 unless $@;
 
     $HAVE_DATA_DUMPER = 0;
@@ -56,7 +58,7 @@ sub spawn
         options => { %{ $self->{opts}||{} } },
 		object_states => [
             $self => [ qw( _start shutdown
-                           static xul httpd_error 
+                           static xul httpd_error xul_file
                            poe_size poe_kernel poe_test
                            session_count session_timeout session_exists
                            sig_HUP sig_DIE
@@ -72,7 +74,7 @@ sub new
 
 	$args->{port} = $args->{port};
     $args->{port} = 8077 unless defined $args->{port};      # PORT
-	$args->{root} = $args->{root} || '/home/fil/work/IGDAIP/httpd-session/poe-xul'; # ROOT
+	$args->{root} = $args->{root} || '/usr/local/poe-xul/xul'; # ROOT
     $args->{alias} ||= 'component-poe-xul';
 	$args->{apps} = {} if (!defined $args->{apps});
 	$args->{opts} = {} if (!defined $args->{opts});
@@ -95,6 +97,9 @@ sub new
     $self->{log_root}    ||= File::Spec->catfile( $self->{root}, 'log' );
 
     $self->build_logging( $args->{logging} );
+
+    $self->{languages} = [ qw( en fr ) ];   # XXX
+    $self->{default_language} = 'fr';       # XXX
 
     return $SINGLETON = $self;
 }
@@ -158,13 +163,13 @@ sub build_http_server
     $self->{aliases} = POE::Component::Server::HTTP->new(
         Port => $self->{port},
         MapOrder => 'bottom-first',
-        # PreHandler => { '/' => [sub {$self->pre_connection(@_)}] },
+        # PreHandler => { '/' => _mk_handler( $self, 'pre_connection' ) },
         PostHandler => { 
-#                '/xul'  => _mk_handler( ),
-                '/'     => _mk_handler( ref($self), 'post_connection' ) 
+                '/'     => _mk_handler( $self, 'post_connection' ) 
             },
         ContentHandler => {
                 '/xul'          => _mk_call( $alias, 'xul' ),
+                '/xul/file/'    => _mk_call( $alias, 'xul_file' ),
                 '/__poe_size'   => _mk_call( $alias, 'poe_size' ),
                 '/__poe_kernel' => _mk_call( $alias, 'poe_kernel' ),
                 '/__poe_text  ' => _mk_call( $alias, 'poe_text' ),
@@ -182,9 +187,9 @@ sub build_http_server
 ## they would capture a reference to $self
 sub _mk_handler
 {
-    my( $package, $call ) = @_;
-    return [ sub { RC_OK } ] unless $package;
-    return [ sub { $package->$call(@_) } ] 
+    my( $self, $call ) = @_;
+    return [ sub { RC_OK } ] unless $self;
+    return [ sub { $self->$call(@_) } ] 
 }
 
 sub _mk_call
@@ -331,7 +336,8 @@ sub xul
 {
     my( $self, $kernel, $req, $resp ) = @_[ OBJECT, KERNEL, ARG0..$#_ ];
 
-    DEBUG and warn "$$: xul";
+    DEBUG and 
+        warn "$$: xul";
     if( $self->{shutdown} ) {
         xwarn "XUL request, but we are shutdown\n";
         return;
@@ -359,10 +365,19 @@ sub xul
 
     my $SID = $req->param( 'SID' ) || '';
     my $event = $req->param( 'event' ) || 'boot';
-    DEBUG and xdebug "Request for SID=$SID event=$event";
+    my $app = $req->param( 'app' ) || '';
+    DEBUG and xdebug "Request for app=$app SID=$SID event=$event";
+
+    unless( $app and $event ) {
+        $req->pre_log;
+        xlog "app=$app SID=$SID event=$event is an empty request";
+        return $self->error( RC_BAD_REQUEST, 'Empty request' );
+    }
 
     my $rc;
     eval {
+        local $self->{logging}->{app} = $app;
+        $req->pre_log;
 		if( $event eq 'boot' ) {
             my $fail = $controler->boot( $req, $resp );
             if( $fail ) {
@@ -370,22 +385,25 @@ sub xul
                 $rc = $self->error_boot_fail( $fail );
             }
 		}
+        ## TODO: move the rest of this into Controler->something
 		elsif( ! $controler->exists( $SID ) ) {
 			$rc = $self->error_unknown_session( $SID );
         }
-        elsif( $event eq 'connect' ) {
-            $controler->connect( $SID, $req, $resp );
-        }
-        elsif( $event eq 'disconnect' ) {
-            $controler->disconnect( $SID, $req, $resp );
-        }
-        elsif( $event eq 'close' ) {
-            $controler->close( $SID, $req, $resp );
-        }
         else {
-            # everything else is a DOM event
-			$controler->keepalive( $SID );
-			$controler->request( $SID, $event, $req, $resp );
+            $controler->keepalive( $SID );  
+            if( $event eq 'connect' ) {
+                $controler->connect( $SID, $req, $resp );
+            }
+            elsif( $event eq 'disconnect' ) {
+                $controler->disconnect( $SID, $req, $resp );
+            }
+            elsif( $event eq 'close' ) {
+                $controler->close( $SID, $req, $resp );
+            }
+            else {
+                # everything else is a DOM event
+                $controler->request( $SID, $event, $req, $resp );
+            }
 		}
         $rc ||= RC_WAIT;
 	};
@@ -394,74 +412,33 @@ sub xul
         warn "Error: $@";
         $rc = $self->error_standard( RC_INTERNAL_SERVER_ERROR, $event, $@ );
     }
-    # xwarn "rc=$rc RC_WAIT=", RC_WAIT;
-    # $resp->continue() unless $rc == RC_WAIT;
 
     return $rc;
 }
 
-
-
-
-
-
-
-############################################################################
-# Peeking
-
 ###############################################################
-sub poe_size
+## Request for a file that starts with /xul/
+sub xul_file
 {
-    my( $self, $kernel, $req, $resp ) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
+    my( $self, $kernel, $req, $resp ) = @_[ OBJECT, KERNEL, ARG0..$#_ ];
 
-    my $content = -1;
-    if( DEBUG and $HAVE_DEVEL_SIZE ) {
-        $content = Devel::Size::total_size( $kernel );
+    # DEBUG and 
+        warn "$$: xul_file";
+    my $uri = $req->uri->path;
+    unless( $uri =~ m(^/xul/file(/(.*))?) ) {
+        return $self->error_standard( RC_BAD_REQUEST, "parsing uri", 
+                                      "$uri isn't a valid path\n" );
     }
-    $resp->code( RC_OK );
-    $resp->content_type( 'text/plain' );
-    $resp->content_length( length $content );
-    $resp->content( $content );
-    return RC_OK;
-}
-
-sub poe_kernel
-{
-    my( $self, $kernel, $req, $resp ) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
-
-    my $content = '';
-    if( DEBUG and $HAVE_DATA_DUMPER ) {
-        local $Data::Dumper::Indent = 1;
-        $content = Data::Dumper::Dumper( $kernel );
+    my $filename = $2||'';
+    $req->uri->path( '/xul' );
+    my $ret = $self->parse_args( $req );
+    unless( ref $ret ) {
+        return $self->parse_error( $ret );
     }
-    $resp->code( RC_OK );
-    $resp->content_type( 'text/plain' );
-    $resp->content_length( length $content );
-    $resp->content( $content );
-    return RC_OK;
+
+    $req->param( filename => $filename );
+    return shift->xul( @_ );
 }
-
-sub poe_test
-{
-    my( $self, $kernel, $req, $resp ) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
-
-    local $self->{request} = $req;
-    local $self->{response} = $resp;
-
-    $self->parse_args( $req );
-
-    my $uri_restart = $self->uri_restart;
-    my $content = <<TEXT;
-uri_restart: $uri_restart
-TEXT
-    xwarn "content=$content";
-    $resp->code( RC_OK );
-    $resp->content_type( 'text/plain' );
-    $resp->content_length( length $content );
-    $resp->content( $content );
-    return RC_OK;
-}
-
 
 
 
@@ -494,7 +471,7 @@ sub static
 
         # Send the file
         my $uri = $req->uri->path;
-        # DEBUG and 
+        DEBUG and 
                 xdebug "Static request: $uri";
 
         my $file = $self->uri_to_file( $uri );
@@ -639,19 +616,33 @@ function Link(name) {
 </script>
 <ul id="POE-XUL-application-list">
 HTML
-    my $lang = 'fr';    # TODO
+    my $lang = $self->language_guess;
+
+    my $text = $lang eq 'fr' ? "Avec menus" : "Keep menus";
     my $count = keys %{ $self->{apps} };
     foreach my $app ( sort keys %{ $self->{apps} } ) {
         next if $app eq 'IGDAIP' and 1 != $count;
         my $name = $self->{app_names}{$app}{$lang} || $app;
         push @html, <<HTML;
     <li><a href="start.xul?$app" onclick="return Link('$app')">$name</a>
-            (<a href="start.xul?$app">Avec menus</a>)</li>
+            (<a href="start.xul?$app">$text</a>)</li>
 HTML
     }
 
     push @html, "</ul>";
     return join "\n", @html;
+}
+
+sub language_guess
+{
+    my( $self ) = @_;
+    return $self->{default_language} unless $self->{request};
+    my $accept = $self->{request}->header( 'Accept-Language' );
+    $self->{acceptor} ||= I18N::AcceptLanguage->new( 
+                            defaultLanguage => $self->{default_language},
+                            strict => 0
+                          );
+    return $self->{acceptor}->accepts( $accept, $self->{languages} );
 }
 
 ####################################################################
@@ -730,7 +721,13 @@ sub uri_restart
     my $host = $req->header( 'X-Forwarded-Host' );
     if( $host ) {
         xwarn "Restart on $host";
+        $host =~ s/,.+$//;
         $uri->host( $host );
+        $uri->port( undef ) if defined $uri->port and 0==$uri->port;
+    }
+    my $referer = $req->header( 'Referer' );
+    if( $referer and $referer =~ /https/ ) {
+        $uri->scheme( 'https' );
     }
     $uri->path( '/start.xul' );
     my $app = $req->param( 'app' );
@@ -749,7 +746,7 @@ sub error
     $ct ||= 'text/plain';
 
     # This could get annoying fast.  It also shows 404s
-    warn "$code $text\n" unless $ENV{AUTOMATED_TESTING}; 
+    warn "$code $text\n"unless $ENV{AUTOMATED_TESTING};
     xlog "$code $text\n"
                 if $ct eq 'text/plain' and (DEBUG or $code != RC_NOT_FOUND);
 
@@ -757,7 +754,7 @@ sub error
         $self->{response}->code( $code );
         $self->{response}->content_type( $ct );
         if( $ct eq 'text/html' ) {
-            $text = encode_entities( $text, "\x80-\xff" );
+            $text = encode_entities_numeric( $text, "\x80-\xff" );
         }
 
         $self->{response}->content( $text );
@@ -852,21 +849,84 @@ sub httpd_error
     my $errnum=$request->header('Errnum');
     my $errstr=$request->header('Error');
 
-#    DEBUG and
-#        xdebug "HTTPD ERROR op=$op errstr=$errstr errnum=$errnum\n";
+    DEBUG and
+        xdebug "HTTPD ERROR op=$op errstr=$errstr errnum=$errnum\n";
 
     if($op eq 'read' and ($errnum==0 or $errnum = ECONNRESET)) {
                                                       # remote closed
-        DEBUG and $request and xdebug "$$ REMOTE CLOSED";
+        if( $self->{controler} and $request ) {
+            DEBUG and 
+                xdebug "$$ REMOTE CLOSED req=$request";
+            $self->{controler}->cancel( $request );
+        }
         # PostHandler will deal with resuming the listening socket
     }
     else {
         xwarn "Error during $op: [$errnum] $errstr";
     }
 
-    return;
+    return RC_OK;
     
 }
+
+############################################################################
+# Peeking
+
+###############################################################
+sub poe_size
+{
+    my( $self, $kernel, $req, $resp ) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
+
+    my $content = -1;
+    if( DEBUG and $HAVE_DEVEL_SIZE ) {
+        $content = Devel::Size::total_size( $kernel );
+    }
+    $resp->code( RC_OK );
+    $resp->content_type( 'text/plain' );
+    $resp->content_length( length $content );
+    $resp->content( $content );
+    return RC_OK;
+}
+
+sub poe_kernel
+{
+    my( $self, $kernel, $req, $resp ) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
+
+    my $content = '';
+    if( DEBUG and $HAVE_DATA_DUMPER ) {
+        local $Data::Dumper::Indent = 1;
+        $content = Data::Dumper::Dumper( $kernel );
+    }
+    $resp->code( RC_OK );
+    $resp->content_type( 'text/plain' );
+    $resp->content_length( length $content );
+    $resp->content( $content );
+    return RC_OK;
+}
+
+sub poe_test
+{
+    my( $self, $kernel, $req, $resp ) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
+
+    local $self->{request} = $req;
+    local $self->{response} = $resp;
+
+    $self->parse_args( $req );
+
+    my $uri_restart = $self->uri_restart;
+    my $content = <<TEXT;
+uri_restart: $uri_restart
+TEXT
+    xwarn "content=$content";
+    $resp->code( RC_OK );
+    $resp->content_type( 'text/plain' );
+    $resp->content_length( length $content );
+    $resp->content( $content );
+    return RC_OK;
+}
+
+
+
 
 
 
@@ -902,17 +962,29 @@ sub sig_HUP
 ############################################################
 sub post_connection
 {
-    my( $package, $req, $resp ) = @_;
+    my( $self, $req, $resp ) = @_;
+    my $app = eval { $req->param( 'app' ) } || $self->{logging}->{app};
+    local $self->{logging}->{app} = $app;
 
     my $conn = $req->connection;
     my @log;
     push @log, ($conn ? $conn->remote_ip : '0.0.0.0');
+    if( $log[-1] eq '127.0.0.1' and $req->header( 'X-Forwarded-For' ) ) {
+        $log[-1] = $req->header( 'X-Forwarded-For' );
+    }
     # push @log, ($self->{preforked} ? $$ : '-');
-    push @log, $$;
+    push @log, $$, '-';
+
+    
+
+    my $path = $req->uri->path;
+    my $query = $req->uri->query;
+    $path .= "?$query" if $query and $req->method eq 'GET';
+
     push @log, "[". POSIX::strftime("%d/%m/%Y:%H:%M:%S %z", localtime)."]",
-               join ' ', $req->method, $req->uri;
+               join ' ', $req->method, $path;
     $log[-1] = qq("$log[-1]");
-    push @log, ($resp->code||'000'), ($resp->content_length||-1);
+    push @log, ($resp->code||'000'), ($resp->content_length||0);
 
     xlog( { message => join( ' ', @log )."\n",
             type    => 'REQ'

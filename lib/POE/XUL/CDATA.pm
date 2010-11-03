@@ -1,12 +1,12 @@
 package POE::XUL::CDATA;
-# $Id: CDATA.pm 1023 2008-05-24 03:10:20Z fil $
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# $Id: CDATA.pm 1566 2010-11-03 03:13:32Z fil $
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 
 use strict;
 use warnings;
 use Carp;
 
-our $VERSION = '0.01';
+our $VERSION = '0.0600';
 
 
 ################################################################
@@ -192,7 +192,7 @@ Based on XUL::Node by Ran Eilam.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2010 by Philip Gwyn.  All rights reserved;
 
 Copyright 2003-2004 Ran Eilam. All rights reserved.
 

@@ -1,12 +1,12 @@
 package POE::XUL::Application;
 # $Id$
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 
 use strict;
 use warnings;
 use Carp;
 
-our $VERSION = '0.01';
+our $VERSION = '0.0600';
 
 use POE;
 use POE::Component::XUL;
@@ -16,7 +16,8 @@ use constant DEBUG => 1;
 
 use vars qw( $window $server );
 
-use Exporter qw( import );
+require Exporter;
+our @ISA = qw( Exporter );
 our @EXPORT = qw( window server );
 
 ################################################################
@@ -349,7 +350,7 @@ Philip Gwyn E<lt>gwyn-at-cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2010 by Philip Gwyn.  All rights reserved;
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

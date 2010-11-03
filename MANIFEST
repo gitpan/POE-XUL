@@ -54,10 +54,12 @@ lib/POE/XUL/ChangeManager.pm
 lib/POE/XUL/Constants.pm
 lib/POE/XUL/Controler.pm
 lib/POE/XUL/Event.pm
+lib/POE/XUL/Encode.pm
 lib/POE/XUL/Javascript.pm
 lib/POE/XUL/Logging.pm
 lib/POE/XUL/Node.pm
 lib/POE/XUL/POE.pod
+lib/POE/XUL/RDF.pm
 lib/POE/XUL/Request.pm
 lib/POE/XUL/Session.pm
 lib/POE/XUL/State.pm

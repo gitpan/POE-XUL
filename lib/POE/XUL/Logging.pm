@@ -1,6 +1,6 @@
 package POE::XUL::Logging;
-# $Id: Logging.pm 1023 2008-05-24 03:10:20Z fil $
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# $Id: Logging.pm 1566 2010-11-03 03:13:32Z fil $
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 #
 # Handle logging features for the application
 # 
@@ -10,17 +10,17 @@ use strict;
 use warnings;
 
 use Carp;
-use Scalar::Util qw( reftype blessed );
+use Scalar::Util qw( reftype blessed openhandle );
 
 use constant DEBUG => 0;
 
-our $VERSION = '0.01';
+our $VERSION = '0.0600';
 
 require Exporter;
+our @ISA = qw( Exporter );
 
-our @EXPORT_OK = qw( xwarn xlog xdebug xcarp );
+our @EXPORT_OK = qw( xwarn xlog xdebug xcarp xcarp2 );
 our @EXPORT = @EXPORT_OK;
-use base 'Exporter';
 
 our $SINGLETON;
 
@@ -60,9 +60,46 @@ sub new
         $self->{logger}     = $args->{logger};
         $self->{access_log} = $args->{access_log};
         $self->{error_log}  = $args->{error_log};
+        $self->__init_apps( $args->{apps} );
     }
 
     return $SINGLETON;
+}
+
+sub __init_apps
+{
+    my( $self, $apps ) = @_;
+    unless( $apps ) {
+        $self->{apps} = [];
+        return;
+    }
+    unless( ref $apps ) {
+        $apps = { $apps=>$apps };
+    }
+    elsif( 'ARRAY' eq ref $apps ) {
+        my %A;
+        @A{@$apps} = @$apps;
+        $apps = \%A;
+    }
+    $self->{apps} = [];
+    while( my( $app, $def ) = each %$apps ) {
+        push @{ $self->{apps} }, $app;
+        foreach my $t ( qw( access error ) ) {
+            my $log = "${t}_log";
+            my $file;
+            unless( ref $def ) {
+                $file = File::Spec->catfile( $def, $log );
+            }
+            elsif( $def->{$log} ) {
+                $file = $def->{$log};
+            }
+            else {
+                $file = File::Spec->catfile( $app, $log );
+            }
+            $self->{"$app-$t-log"} = $file;
+        }
+    }
+    return;
 }
 
 ############################################################
@@ -129,14 +166,21 @@ sub default_setup
     my( $self ) = @_;
     $self = $SINGLETON unless blessed $self;
 
-    my $stderr_fh = $self->open_file( qw( error_log error_log ) );
-    $stderr_fh->autoflush(1);
-    $self->{stderr_fh} = $stderr_fh;
-
-    my $log_fh = $self->open_file( qw( access_log access_log ) );
-    $log_fh->autoflush(1);
-    $self->{log_fh} = $log_fh;
-
+    $self->{stderr_fh} = $self->open_file( qw( error_log error_log ) );
+    $self->{error_fh} = $self->{stderr_fh};
+    $self->{log_fh}    = $self->open_file( qw( access_log access_log ) );
+    $self->{access_fh} = $self->{log_fh};
+    foreach my $app ( @{ $self->{apps} } ) {
+        foreach my $t ( qw( error access ) ) {
+            if( $self->{"$app-$t-log"} ) {
+                $self->{"$app-$t-fh"} = 
+                        $self->open_file( "$app-$t-log", "$app/${t}_log" );
+            }
+            else {
+                $self->{"$app-$t-fh"} = $self->{"${t}_fh"};
+            }
+        }
+    }
 }
 
 ############################################################
@@ -146,11 +190,14 @@ sub open_file
 
     my $file = $self->{$key};
     $file ||= File::Spec->catfile( $self->{log_root}, $name ); 
+    unless( File::Spec->file_name_is_absolute( $file ) ) {
+        $file = File::Spec->catfile( $self->{log_root}, $file );
+        $self->{$key} = $file;
+    }
 
     my( $vol, $dir, $f ) = File::Spec->splitpath( $file );
 
     if( $dir and not -d $dir ) {
-        # warn "Creating $dir ($file)";       # TODO: do I want this warning?
         File::Path::mkpath( [ $dir ], 0, 0750 );
     }
 
@@ -159,6 +206,7 @@ sub open_file
         warn "AUGH $file: $!";
         die "Unable to create log file $file: $!";
     }
+    $fh->autoflush(1);
     return $fh;
 }
 
@@ -180,17 +228,14 @@ sub default
     	$msg .= "\n";
     }
 	
-
-	if( $self->{log_fh} and $type eq 'REQ' ) {
-		$self->{log_fh}->print( $msg );
-	}
-	else {
-        if( $self->{stderr_fh} ) {
-            $self->{stderr_fh}->print( $msg );
-        }
-        else {
-            print STDERR $msg;
-    	}
+    my $app = $self->{app}||'THERE-IS-NO-APP';
+    my $t = $type eq 'REQ' ? 'access' : 'error';
+    my $fh = $self->{"$app-$t-fh"} || $self->{"${t}_fh"} || $self->{stderr_fh};
+    if( $fh ) {
+        $fh->print( $msg );
+    }
+    else {
+        print STDERR $msg;
     }
 }
 
@@ -225,6 +270,13 @@ sub xwarn
 sub xcarp
 {
     my $ex = $SINGLETON->__mk_exception( 'WARN', 2, @_ );
+    $ex->{location} = 1;
+    $SINGLETON->dispatch( $ex );
+}
+
+sub xcarp2
+{
+    my $ex = $SINGLETON->__mk_exception( 'WARN', 3, @_ );
     $ex->{location} = 1;
     $SINGLETON->dispatch( $ex );
 }
@@ -402,7 +454,7 @@ Based on XUL::Node by Ran Eilam.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2010 by Philip Gwyn.  All rights reserved;
 
 Copyright 2003-2004 Ran Eilam. All rights reserved.
 

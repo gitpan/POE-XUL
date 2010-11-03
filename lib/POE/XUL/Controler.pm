@@ -1,20 +1,23 @@
 package POE::XUL::Controler;
-# $Id: Controler.pm 1023 2008-05-24 03:10:20Z fil $
+# $Id: Controler.pm 1566 2010-11-03 03:13:32Z fil $
 #
-# Copyright Philip Gwyn / Awalé 2007-2008.  All rights reserved.
+# Copyright Philip Gwyn / Awalé 2007-2010.  All rights reserved.
 #
 
 use strict;
 use warnings;
 
 use Carp;
-use Digest::MD5 qw(md5_base64);
+use Digest::MD5 qw(md5_hex);
 use POE::Kernel;
 use POE::XUL::ChangeManager;
 use POE::XUL::Event;
 use POE::XUL::Logging;
+use Scalar::Util qw( weaken );
 
 use constant DEBUG => 0;
+
+our $VERSION = '0.0600';
 
 ##############################################################
 sub new 
@@ -23,7 +26,8 @@ sub new
 	my $self = bless {
 		sessions => {},
         timeout  => $timeout,
-        apps     => $apps
+        apps     => $apps,
+        events   => {}
 	}, $package;
 	return $self;
 }
@@ -31,9 +35,16 @@ sub new
 ##############################################################
 sub build_event
 {
-    my( $self, $event_name, $CM, $resp ) = @_;
+    my( $self, $event_name, $CM, $resp, $req ) = @_;
+    my $event = POE::XUL::Event->new( $event_name, $CM, $resp );
 
-    return POE::XUL::Event->new( $event_name, $CM, $resp );
+    # Keep a weak reference so we can cancel the event if needs be
+    my $r = 0+$req;
+    $self->{events}{$r} = $event;
+    weaken( $self->{events}{$r} );
+    DEBUG and xwarn "BUILD r=$r event=$event";
+
+    return $event;
 }
 
 ##############################################################
@@ -154,11 +165,15 @@ sub boot
 {
     my( $self, $req, $resp ) = @_;
     my $app = $req->param( 'app' );
+    unless( $app ) {
+        xlog "Controler: Request must have application name";
+        return "Controler: Request must have application name";
+    }
     my $A = $self->{apps}{$app};
 
     unless( $A ) {
         xlog "Unknown application: $app";
-        return "Application inconue : $app";
+        return "Application inconnue : $app";
     }
 
     unless( ref $A ) {
@@ -169,7 +184,7 @@ sub boot
 #    xlog "A=", Dumper $A;     
     my $CM = $self->build_change_manager();
 
-    my $event = $self->build_event( 'boot', $CM, $resp );
+    my $event = $self->build_event( 'boot', $CM, $resp, $req );
     $event->__init( $req );
     $event->coderef(
             sub { 
@@ -177,10 +192,10 @@ sub boot
                 my $SID = $self->make_session_id;
                 $event->SID( $SID );
                 $event->CM->SID( $SID );
-                my $session = $A->( $event );
+                my $session = $A->( $event, $app );
                 $self->register( $SID, $session, $event->CM );
                 $event->defer;
-                $poe_kernel->post( $SID, 'boot', $event );
+                $poe_kernel->post( $SID, 'boot', $event, $app );
             }
         );
 
@@ -196,7 +211,7 @@ sub close
     my $S = $self->{sessions}{ $SID };
     die "Can't find session $SID" unless $SID;
 
-    my $event = $self->build_event( 'close', $S->{CM}, $resp );
+    my $event = $self->build_event( 'close', $S->{CM}, $resp, $req );
     $event->coderef(
             sub { 
                 xlog "Close $SID";
@@ -219,7 +234,7 @@ sub connect
     my $S = $self->{sessions}{ $SID };
     die "Can't find session $SID" unless $SID;
 
-    my $event = $self->build_event( 'connect', $S->{CM}, $resp );
+    my $event = $self->build_event( 'connect', $S->{CM}, $resp, $req );
     $event->__init( $req );
 
     $event->coderef( sub {
@@ -238,7 +253,7 @@ sub disconnect
     my $S = $self->{sessions}{ $SID };
     die "Can't find session $SID" unless $SID;
 
-    my $event = $self->build_event( 'disconnect', $S->{CM}, $resp );
+    my $event = $self->build_event( 'disconnect', $S->{CM}, $resp, $req );
     $event->__init( $req );
 
     $event->coderef( sub {
@@ -257,7 +272,7 @@ sub request
     my $S = $self->{sessions}{ $SID };
     die "Can't find session $SID" unless $SID;
 
-    my $event = $self->build_event( $event_type, $S->{CM}, $resp );
+    my $event = $self->build_event( $event_type, $S->{CM}, $resp, $req );
     $event->__init( $req );
 
     $self->xul_request( $event );
@@ -285,8 +300,38 @@ sub xul_request
     else {
         # User code wants us to wait
         DEBUG and xdebug "Defered response";
+        # User code will then call $event->finish when the time is right
     }
     return 1;
+}
+
+##############################################################
+## Cancel a request.  This happens on browser disconnect
+sub cancel
+{
+    my( $self, $request ) = @_;
+
+    my $r = 0+$request;
+    my $event = $self->{events}{ $r };
+    unless( $event ) {
+        if( $request->method ne 'DISCONNECT' ) {
+            xlog "FAILURE!  I no longer have an event for $request ", 0+$request;
+        }
+        return;
+    }
+
+    my $SID = $event->SID;
+    my $S = $self->{sessions}{ $SID };
+    unless( $SID ) {
+        xwarn "Can't find session $SID";
+        return;
+    }
+
+    DEBUG and 
+        xwarn "CANCEL r=$r event=$event SID=$SID";
+    
+    $event->cancel;
+    # TODO : do I need to set a flag on the CM?
 }
 
 ##############################################################
@@ -294,8 +339,12 @@ sub xul_request
 ## Though unguessable isn't all that useful : it can be sniffed off the air
 sub make_session_id {
 	my $self = shift;
-	my $id = md5_base64($$, time, rand(9999));
-    $id =~ tr(/+)(-_);
+	my $id = md5_hex($$, time, rand(9999));
+    # Format it like a UUID: B6ED3B3F-72C8-3EEF-8173-EC86AA01EA29
+    substr( $id, 20, 0, '-' );
+    substr( $id, 16, 0, '-' );
+    substr( $id, 12, 0, '-' );
+    substr( $id,  8, 0, '-' );
 	return $id;
 }
 

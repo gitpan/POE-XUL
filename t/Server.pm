@@ -23,6 +23,7 @@ sub spawn
     return $pid if $pid;
     $root ||= 'poe-xul';
     $prog ||= 't/test-app.pl';
+    local $ENV{AUTOMATED_TESTING} = 1;
     local $ENV{PERL5LIB} = join ':', qw( blib/lib
                                            ../widgets/blib/lib
                                            ../httpd/blib/lib

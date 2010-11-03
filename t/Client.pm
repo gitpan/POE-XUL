@@ -108,6 +108,7 @@ sub handle_resp
     my %accume;
     my $for = $self->{name};
     foreach my $I ( @$data ) {
+        next unless $I->[0];
         if( $I->[0] eq 'for' ) {
             $for = $I->[1];
             next;
@@ -165,7 +166,7 @@ sub handle_one
         die $args[0];
     }
 
-    next if $id and $self->{deleted}{ $id };
+    return if $id and $self->{deleted}{ $id };
     if( $op eq 'SID' ) {
         ok( !$self->{SID}, "New SID $id" );
         $self->{SID} = $id;
@@ -180,14 +181,19 @@ sub handle_one
                 or die "$self->NODES=", 
                            sort keys %{ $self->{NODES} };
         my $parent = $self->{NODES}->{$id}{zC};
-        ok( ( $args[0] <= @{$parent} ), " ... and this isn't way out there" );
-        my $tn = $parent->[ $args[0] ];
-        if( $tn and $tn->{tag} eq 'textnode' ) {
-            $tn->{nodeValue} = $args[1];
-        }
+        if( $args[0] < 0 ) {
+            push @$parent, { tag=>'textnode', nodeValue=>$args[1] };
+        } 
         else {
-            $parent->[ $args[0] ] =
-                { tag=>'textnode', nodeValue=>$args[1] };
+            ok( ( $args[0] <= @{$parent} ), " ... and this isn't impossible" );
+            my $tn = $parent->[ $args[0] ];
+            if( $tn and $tn->{tag} eq 'textnode' ) {
+                $tn->{nodeValue} = $args[1];
+            }
+            else {
+                $parent->[ $args[0] ] =
+                    { tag=>'textnode', nodeValue=>$args[1] };
+            }
         }
     }
     elsif( $op eq 'cdata' ) {
@@ -195,13 +201,18 @@ sub handle_one
         ok( $self->{NODES}->{$id}, " ... and we have its parent ($id)" );
         my $parent = $self->{NODES}->{$id}{zC};
         ok( ( $args[0] <= @{$parent} ), " ... and this isn't way out there" );
-        my $tn = $parent->[ $args[0] ];
-        if( $tn and $tn->{tag} eq 'cdata' ) {
-            $tn->{nodeValue} = $args[1];
+        if( $args[0] < 0 ) {
+            push @$parent, { tag=>'cdata', cdata=>$args[1] };
         }
         else {
-            $parent->[ $args[0] ] =
-                { tag=>'cdata', cdata=>$args[1] };
+            my $tn = $parent->[ $args[0] ];
+            if( $tn and $tn->{tag} eq 'cdata' ) {
+                $tn->{nodeValue} = $args[1];
+            }
+            else {
+                $parent->[ $args[0] ] =
+                    { tag=>'cdata', cdata=>$args[1] };
+            }
         }
     }
     elsif( $op eq 'new' ) {
@@ -213,12 +224,18 @@ sub handle_one
             my $parent = $self->{NODES}->{$args[1]};
             ok( $parent, " ... and we have its parent ($args[0] wants $args[1])" );
 
-            my $old = $parent->{zC}[ $args[2] ];
-            if( $old ) {
-                delete $self->{NODES}->{ $old->{id} };
+            if( $args[2] < 0 ) {
+                $parent->{zC} ||= [];
+                push @{ $parent->{zC} }, $new;
             }
+            else {
+                my $old = $parent->{zC}[ $args[2] ];
+                if( $old ) {
+                    delete $self->{NODES}->{ $old->{id} };
+                }
 
-            $parent->{zC}[ $args[2] ] = $new
+                $parent->{zC}[ $args[2] ] = $new;
+            }
         }
         if( ($new->{tag}||'') eq 'window' ) {
             ok( !$self->{W}, "New window" );
@@ -327,6 +344,24 @@ sub handle_one
     elsif( $op eq 'timeslice' ) {
         # ignore it
     }
+    elsif( $op eq 'style' ) {
+        ok( 2==@args, "Going to set style $args[0]" );
+        ok( $self->{NODES}->{$id}, " ... on an existing node" )
+                or die "Where is $id in ", join ', ', sort keys %{ $self->{NODES} }, 
+                                Dumper [ $op, $id, @args ];
+
+        my $N = $self->{NODES}->{$id};
+        
+        isnt( $N->{tag}, 'textnode', "One can't set the style of a text node!" );
+        
+        $self->{style} ||= {};
+        if( not ref $N->{style} ) {
+            $N->{style} = { map { split /:\s*/, $_, 2 } 
+                                split /;\s*/, $N->{style} #**
+                          };
+        }
+        $N->{style}{$args[0]} = $args[1];
+    }
     else {
          die "What do i do with op=$op";
     }
@@ -359,7 +394,20 @@ sub is_visible
 {
     my( $self, $node ) = @_;
     $node = $self->find_ID( $node ) unless ref $node;
-    return not ( ($node->{style}||'') =~ /display:\s*none/ );
+    return unless $node;
+    my $style = $self->style( $node );
+    return not ( $style =~ /display:\s*none/ );
+}
+
+######################################################
+sub style
+{
+    my( $self, $node ) = @_;
+    my $S = $node->{style};
+    return '' unless $S;
+    return $S unless ref $S;
+    
+    return join "\n", map { "$_: $S->{$_};" } sort keys %$S;
 }
 
 
@@ -437,6 +485,38 @@ sub list_ID
     return join ', ', @list unless wantarray;
     return @list;
 }
+
+sub find_by_tag
+{
+    my( $self, $tag ) = @_;
+
+    return map { $self->find_ID( $_ ) } $self->list_by_tag( $tag );
+}
+
+sub list_by_tag
+{
+    my( $self, $tag ) = @_;
+    my @list;
+    foreach my $id ( keys %{ $self->{NODES} } ) {
+        my $node = $self->find_ID( $id );
+        next unless $node->{tag} eq $tag;
+        push @list, $id;
+    }
+    return join ', ', @list unless wantarray;
+    return @list;
+}
+
+sub find_by_attr
+{
+    my( $self, $attr, $want ) = @_;
+    foreach my $node ( values %{ $self->{NODES} } ) {
+        next unless ($node->{$attr}||'') eq $want;
+        return $node;
+    }
+    return;
+}
+
+
 ######################################################
 sub test_node
 {
@@ -508,7 +588,7 @@ sub Change
     my $URI = $self->Change_uri( $node );
     my $resp = $self->{UA}->get( $URI );
     my $data = $self->decode_resp( $resp, "Change $node->{id}" );
-    die Dumper $data if $data->[0][0] eq 'ERROR';
+    die Dumper $data if $data->[0] and $data->[0][0] eq 'ERROR';
     $self->handle_resp( $data, "Change $node->{id}" );    
 }
 

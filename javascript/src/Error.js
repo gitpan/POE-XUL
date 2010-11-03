@@ -2,6 +2,8 @@
 // Copyright 2007-2008 Philip Gwyn.  All rights reserved.
 // ------------------------------------------------------------------
 
+// See also 
+// /usr/local/firefox-2.0.0.3/chrome/classic/skin/classic/global/netError.css
 var $error;
 
 function POEXUL_Error () {

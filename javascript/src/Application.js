@@ -15,6 +15,7 @@ function POEXUL_Application () {
     if( matches ) {
         this.applicationName = matches[1];
     }
+    fb_log( "Application name %s", this.applicationName );
     this.crashed = false;
     this.frames = [];
     this.other_windows = {};
@@ -22,9 +23,13 @@ function POEXUL_Application () {
     this.groupbox_style = "border-color: #124578;";
     this.caption_style = "color: white; font-weight: bold; padding: 0px 9px 5px 9px; margin: 0px; -moz-border-radius: 3px; background-color: #124578; border: 1px solid #124578;";
 
-	this.runner = POEXUL_Runner.get();
-    this.conduit = new POEXUL_Conduit ( this.baseURI() );
+    this.xulNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+    this.htmlNS = "http://www.w3.org/1999/xhtml";
+
     $application = this;
+
+    this.runner = POEXUL_Runner.get();
+    this.conduit = new POEXUL_Conduit ( this.baseURI() );
     var b1 = new POEXUL_Status;
     var b2 = new POEXUL_Blocker;
     this.init_window( window );
@@ -75,6 +80,12 @@ _.init_window = function ( win ) {
             function(event) { self.fireEvent_Keypress(event)  }, true );
     win.addEventListener( 'unload',
             function(event) { self.unload(event)  }, true );
+    win.addEventListener( 'resize',
+            function(event) { self.resize(event)  }, false );
+//    win.addEventListener( 'click',
+//            function(event) { self.click(event)  }, false );
+//    win.addEventListener( 'DOMAttrModified',
+//            function(event) { self.attrModified(event)  }, false );
 }
 
 // ------------------------------------------------------------------
@@ -108,8 +119,33 @@ _.baseURI = function () {
     var pathname   = location.pathname.replace(/\/[^\/]+$/, "");
     var port       = location.port;
     port           = port? ':' + port: '';
-    return 'http://'+location.hostname + port + pathname + "/xul";
+    return location.protocol + '//' + location.hostname + port + 
+                                        pathname + "/xul";
 }
+
+_.buildURI = function (req) {
+    var extra = req.extra;
+    delete req.extra;
+
+    this.setupEvent( req );
+    this.conduit.setupRequest( req );
+    var R = [];
+    for( var key in req ) {
+        R.push( encodeURIComponent( key ) + "=" + 
+                encodeURIComponent( req[key] ) 
+              );
+    }
+
+    var uri = this.baseURI();
+    if( extra && extra.file ) {
+        uri += "/file/" + extra.file;
+    }
+
+    uri += "?" + R.join( "&" );
+    return uri;
+}
+
+
 
 // ------------------------------------------------------------------
 _.setSID = function ( SID ) {
@@ -153,34 +189,9 @@ _.crash = function ( why ) {
         xul = "<html:p style='width:550px'>" + why + "</html:p>"
     }
 
-    var mime;
-
-    if( html ) {
-        data = html;
-        mime = "text/html";
-    }
-    else if( ! data ) {
-        // this means it isn't HTML
-        // So the alert won't look weird
-        // alert( why );
-        // already = 1;
-
-        data = "<?xml version='1.0'?>\n" +
-               "<?xml-stylesheet href='chrome://global/skin/' type='text/css'?>\n" +
-               "<window xmlns='http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul' "+
-                "xmlns:html='http://www.w3.org/1999/xhtml' " +
-                "orient='vertical'>\n" +
-               "<hbox><spacer flex='1'/><groupbox class='error' style='background-color: white; margin-top: 75px; max-height: 600px;" + this.groupbox_style + "'>" +
-                    "<caption style='padding: 0;'><description style='" + this.caption_style + "'>"+ title + 
-                    "</description></caption>" +
-               "<hbox style='max-width:600px; min-width: 200px; overflow: auto;' flex='1'><vbox><image class='error-icon'/><spacer/></vbox>" +
-                    "<description style='margin-bottom: 2em;'>" + xul + "</description></hbox>" +
-                "</groupbox><spacer flex='1'/></hbox><spacer/></window>";
-        mime = "application/vnd.mozilla.xul+xml";
-    }
-    try { 
-        // btoa fails on unicode
-        data = btoa( data );
+    try {
+        window.location = this.XUL2uri( { title: title, xul: xul, html: html, 
+                                          icon: 'error-icon' } );
     }
     catch( err ) {
         // If that's the case, show the alert (if not already ) and bug out
@@ -189,8 +200,44 @@ _.crash = function ( why ) {
         }
         throw( err );
     }
-    window.location = "data:"+mime+";base64," + data;
 }
+
+_.XUL2uri = function ( details ) {
+
+    if( details.html ) {
+        data = details.html;
+        mime = "text/html";
+    }
+    else {
+        // this means it isn't HTML
+        // So the alert won't look weird
+        var icon = details.icon;
+        var width = 600;
+        if( details.width )
+            width = details.width;
+        // see also /usr/local/firefox-2.0.0.3/chrome/classic/skin/classic/global/netError.css
+        data = "<?xml version='1.0'?>\n" +
+               "<?xml-stylesheet href='chrome://global/skin/' type='text/css'?>\n" +
+               "<window xmlns='http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul' "+
+                "xmlns:html='http://www.w3.org/1999/xhtml' " +
+                "orient='vertical'>\n" +
+               "<hbox><spacer flex='1'/><groupbox class='error' style='background-color: white; margin-top: 75px; max-height: 600px;" + this.groupbox_style + "'>" +
+                    "<caption style='padding: 0;'><description style='" + this.caption_style + "'>"+ details.title + 
+                    "</description></caption>" +
+               "<hbox style='max-width:" + width + "px; min-width: 200px;' flex='1'>";
+        if( details.icon ) {
+            data += "<vbox><image class='" + details.icon + "'/><spacer/></vbox>";
+            width -= 50;
+        }
+        data += "<description style='max-width:" + width + "px; min-width: 200px; margin-bottom: 2em;'>" + details.xul + "</description></hbox>" +
+                "</groupbox><spacer flex='1'/></hbox><spacer/></window>";
+        mime = "application/vnd.mozilla.xul+xml";
+    }
+    // btoa fails on unicode
+    data = btoa( data );
+    return "data:"+mime+";base64," + data;
+}
+
 
 _.text2html = function ( message ) {
 
@@ -240,63 +287,19 @@ _.exception = function ( type, EXs ) {
 // events ---------------------------------------------------------------------
 
 _.fireEvent_Command = function (domEvent) {
-	var source = domEvent.target;
-	if (source.tagName == 'menuitem') {
-		var realSource = source.parentNode;
-		if (realSource.tagName == 'search-list') {
-            // $debug( 'Select SearchList ' + realSource.selectedIndex );
-			this.fireEvent( 'Select', 
-                            { 'target': realSource },
-                            { 'selectedIndex': realSource.selectedIndex }
-                          );
-            return;
-		} 
-
-		realSource = realSource.parentNode;
-		if (realSource.tagName == 'menu') {
-            // fb_log( "menu->Click" );
-			this.fireEvent('Click', domEvent, {});
-		} 
-        else {
-            // menulist: mozilla doesn't set selectedIndex properly!
-            // Same with button, it seems
-			var selectedIndex;
-			if (realSource.tagName == 'button' || 
-                    realSource.tagName == 'menulist' ) {
-				var children = source.parentNode.childNodes;
-				selectedIndex = children.length;
-				while (selectedIndex--) if (children[selectedIndex] == source) break;
-                // fb_log( realSource.tagName + "'s true index=" + selectedIndex );
-                realSource.selectedIndex = selectedIndex;
-			} else { 
-				selectedIndex = realSource.selectedIndex;
-			}
-			this.fireEvent(
-				'Select',
-				{'target': realSource},
-				{'selectedIndex': selectedIndex}
-			);
-		}
+    var source = domEvent.target;
+    // fb_dir( { tagName: source.tagName, Command: domEvent } );
+    if (source.tagName == 'menuitem' || source.tagName == 'menulist' ) {
+        this.fireEvent_Command_Select( domEvent );
     } 
     else if (source.tagName == 'radio') {
-       var realSource = source.parentNode;
-       if (realSource.tagName == 'radiogroup') {
-            this.fireEvent( 'RadioClick',
-                                {'target': realSource},
-                                {'selectedId':  source.getAttribute( 'id' ) }
-                          );
-        }
-        else {
-            //alert( "Why a click from "+ realSource.tagName + "." +
-            //                            realSource.getAttribute( 'id' ) );
-        }
+        this.fireEvent_Command_RadioClick( domEvent );
     }
     else if ( source.tagName == 'splitter' ) {
         // ignore the clicks on a splitter
         return;
     }
     else {
-
         if( FormatedField ) {
             var bp = domEvent.target.getAttribute( 'bypass' );
             if( !bp && !FormatedField.form_validate() ) {
@@ -306,28 +309,192 @@ _.fireEvent_Command = function (domEvent) {
 
         // fb_log( "Command->Click " + domEvent.type );
         this.fireEvent('Click', domEvent, {});
-	}
+    }
 }
+
+_.fireEvent_Command_Select = function ( domEvent ) {
+    var target = domEvent.target;
+
+    var realTarget = target;
+    fb_log( 'target is %s', target.tagName );
+    if( target.tagName == 'menuitem' ) {
+        realTarget = target.parentNode;
+    }
+    // realTarget is the menupopup, search-list or menu
+
+    if (realTarget.tagName == 'search-list') {
+        // $debug( 'Select SearchList ' + realTarget.selectedIndex );
+        this.fireEvent( 'Select', 
+                        { 'target': realTarget },
+                        { 'selectedIndex': realTarget.selectedIndex }
+                      );
+        return;
+    } 
+
+    fb_log( 'realTarget is %s', realTarget.tagName );
+    if( realTarget.tagName == 'menupopup' )
+        realTarget = realTarget.parentNode;
+    // realTarget must now be the menulist
+    fb_log( 'realTarget is finally %s#%s', realTarget.tagName, realTarget.id );
+
+    fb_dir( { selectedIndex: realTarget.selectedIndex, 
+                   realTarget: realTarget } );
+
+    if (realTarget.tagName == 'menu') {
+        // fb_log( "menu->Click" );
+        this.fireEvent('Click', domEvent, {});
+    } 
+    else {
+        // menulist: mozilla doesn't set selectedIndex properly!
+        // Same with button, it seems
+        var I;
+        if (realTarget.tagName == 'button' || 
+                realTarget.tagName == 'menulist' ) {
+            var children = target.parentNode.childNodes;
+            I = children.length;
+            var trueI; 
+            fb_log( children );
+            fb_log( "looking for %s#%s", target.tagName, target.id );
+            while (I--) {
+                // fb_log( "%i is %s#%s", I, children[I].tagName, children[I].id );
+                if (children[I] == target) {
+                    trueI = I;
+                    break;
+                }
+            }
+            if( trueI === undefined ) {
+                I = realTarget.selectedIndex;
+                fb_log( "Can't find %s#%s in %s#%s.  I hope %i is the true index.",
+                            target.tagName, target.id, 
+                            realTarget.tagName, realTarget.id, I );
+            }
+            else if( trueI == realTarget.selectedIndex ) {
+                I = trueI;
+                fb_log( "%s#%s had the correct index=%i", 
+                        realTarget.tagName, realTarget.id, I );
+            }
+            else {
+                realTarget.selectedIndex = trueI;
+                I = trueI;
+                fb_log( "%s#%s's true index=%i", 
+                        realTarget.tagName, realTarget.id, I );
+            }
+        } 
+        else { 
+            I = realTarget.selectedIndex;
+        }
+        var params = {'selectedIndex': I };
+
+        // Send event to app server
+        this.fireEvent( 'Select', {'target': realTarget}, params );
+    }
+}
+
+_.fireEvent_Command_RadioClick = function ( domEvent ) {
+    var source = domEvent.target;
+    var realSource = source.parentNode;
+    if (realSource.tagName == 'radiogroup') {
+        this.fireEvent( 'RadioClick',
+                            {'target': realSource},
+                            {'selectedId':  source.getAttribute( 'id' ) }
+                      );
+    }
+    else {
+        fb_log( "Why a click from "+ realSource.tagName + "." +
+                                    realSource.getAttribute( 'id' ) );
+    }
+}
+
+// In FACT! the select event happens when text is selected in a textbox
+// http://www.w3.org/TR/DOM-Level-2-Events/events.html#Events-eventgroupings-htmlevents
+// Or when a line from a tree is selected!
 
 _.fireEvent_Select = function (domEvent) {
-	var source = domEvent.target;
-	var selectedIndex = source.selectedIndex;
-	if (selectedIndex == -1) return; // listbox: mozilla fires strange events
+    var source = domEvent.target;
+
+    if( source.tagName == 'tree' ) {
+        return this.fireEvent_treeSelect( domEvent );
+    }
+    fb_log( "Useless select", domEvent );
+    return;
+
+
+    // Prevent a selectIndex=N that comes from Runner going back to XUL
+    if( source.getAttribute( 'suppressonselect' ) )
+        return;
+
+    fb_dir( { Select: domEvent } );
+    var selectedIndex = source.selectedIndex;
+    var params = {'selectedIndex': selectedIndex };
+    
     // textbox: mozilla fires this event when user selects text
-    if (selectedIndex == undefined) return;
-	this.fireEvent
-		('Select', {'target': source}, {'selectedIndex': selectedIndex });
+    if (selectedIndex == undefined)
+        return;
+    // listbox: mozilla fires strange events
+    if (selectedIndex == -1 ) {
+        var editable = source.getAttribute( 'editable' );
+        if( !editable || editable != 'true' )
+            return;
+        // menulist + editable="true", user entered something
+        params['value'] = source.value;
+    }
+    this.fireEvent( 'Select', {'target': source}, params );
 }
 
+_.fireEvent_treeSelect = function ( domEvent ) {
+
+    var source = domEvent.target;
+
+    var rowN = source.currentIndex;
+    if( rowN == -1 )
+        return;
+
+    var params = { 'selectedIndex': rowN };
+    if( source.columns ) {
+        // POE::XUL::RDF datasources need this
+        var pcol = source.columns.getPrimaryColumn(); 
+        if( !pcol ) {
+            for( var q=0; q < source.columns.count ; q++ ) {
+                var col = source.columns.getColumnAt( q );
+                if( col.element.tagName == 'treecol' ||
+                    col.element.tagName == 'itemcol' ) {
+                    pcol = col;
+                    break;
+                }
+            }
+        }
+        if( pcol ) {
+            params.primary_col = pcol.id;
+            params.primary_text = source.view.getCellText( rowN, pcol );
+        }
+    }
+
+    this.fireEvent( 'Select', {'target': source}, params );
+}
+
+
 _.fireEvent_Pick = function (domEvent) {
-	var source = window.document.getElementById(domEvent.targetId);
-	this.fireEvent('Pick', {'target': source}, {'color': source.color });
+    var source = window.document.getElementById(domEvent.targetId);
+    this.fireEvent('Pick', {'target': source}, {'color': source.color });
 }
 
 _.fireEvent_Change = function (domEvent) { 
 
-    var target = domEvent.target;
-    this.fireEvent('Change', domEvent, {'value': target.value}) 
+    fb_dir( { Change: domEvent } );
+    var source = domEvent.target;
+    var params = { 'value' : source.value };
+    if( source.tagName == 'menulist' ) {    // menuitem + editable='true'
+        params.selectedIndex = -1;
+        fb_log( "menulist %s changed, doing Select (%s)", 
+                                        source.getAttribute( 'id' ),
+                                        params.value );
+        this.fireEvent( 'Select', domEvent, params );
+    }
+    else {
+        if( source.inputField )
+            params.value = source.inputField.value;
+        this.fireEvent('Change', domEvent, params);
+    }
 }
 
 _.fireEvent_Keypress = function (e) { 
@@ -368,13 +535,13 @@ _.fireEvent_KP_F = function ( tag, name ) {
 // private --------------------------------------------------------------------
 
 _.fireEvent = function (name, domEvent, params) {
-	var source   = domEvent.target;
-	var sourceId = source.id;
-	if (!sourceId) return; // event could come from some unknown place
-	var event = {
-		'source_id' : sourceId,
-		'event'   : name,
-	};
+    var source   = domEvent.target;
+    var sourceId = source.id;
+    if (!sourceId) return; // event could come from some unknown place
+    var event = {
+        'source_id' : sourceId,
+        'event'   : name,
+    };
     if( 0 ) {  // XUL doesn't believe in checked, it seems
         event['checked'] = source.getAttribute('checked');
     }
@@ -382,8 +549,8 @@ _.fireEvent = function (name, domEvent, params) {
         event['checked'] = source.getAttribute('selected');
     }
 
-	var key; for (key in params) event[key] = params[key];
-	this.runRequest(event);
+    var key; for (key in params) event[key] = params[key];
+    this.runRequest(event);
 }
 
 
@@ -396,6 +563,13 @@ _.setupEvent = function ( event ) {
     event.app = this.applicationName;
     if( ! ("window" in event) )
         event.window = window.name;
+
+    // fb_log( event );
+    // fb_log( "window name=", window.name );
+
+    if( ! event.app )
+        this.crash( "I need an aplication name!" );
+
     return event;
 }
 
@@ -426,22 +600,31 @@ _.runRequest = function (event) {
 
     event = this.setupEvent( event );
 
-    fb_log( "event=" + event.event );
+    if( !event.event ) 
+        event.event = 'boot';
+    fb_log( "app=%s event=%s", event.app, event.event );
+
+    if( this.longEvent( event ) )
+        this.status( "load" );
 
     var self = this;
-    this.status( "load" );
     this.conduit.request( event, 
-                          function (json) { self.runResponse( json ) } 
+                          function (json) { self.runResponse( json, event ) } 
                         );
 }
 
-
 // ------------------------------------------------------------------
-_.runResponse = function ( json ) {
+_.runResponse = function ( json, event ) {
 
-    this.status( "run" );
+    // fb_log( 'runResponse' );
 
+    if( event && this.longEvent( event ) )
+        this.status( "run" );
+
+    // fb_log( json );
     if( json == null ) {
+        // fb_log( event );
+        // alert( "Response didn't include JSON ", window.name );
         this.crash( "Response didn't include JSON" );
     }
     else if( 'object' != typeof json && 'Array' != typeof json ) {
@@ -449,12 +632,21 @@ _.runResponse = function ( json ) {
     }
     else {
         this.runner.run( json );
-    	this.status( "done" );
+        // this.status( "done" );
     }
     return;
 }
 
 // ------------------------------------------------------------------
+_.longEvent = function ( event ) {
+    if( !event.event )
+        return 0;
+    if( event.event == 'boot' )
+        return 1;
+    if( event.event == 'Click' )
+        return 1;
+    return 0;
+}
 _.status = function ( status ) {
 
     var text;
@@ -464,6 +656,10 @@ _.status = function ( status ) {
     }
     else if( status == 'run' ) {
         text = "Ex\xe9cution...";
+    }
+    else if( status == 'open' ) {
+        document.documentElement.style.cursor = "wait";
+        text = "Ouverture d'une fen\xeatre...";
     }
     else if( status == 'done' ) {
         document.documentElement.style.cursor = "auto";
@@ -519,16 +715,30 @@ _.timing = function ( what, start, end ) {
 // ------------------------------------------------------------------
 // Open a sub-window
 _.openWindow = function ( url, id, features ) {
-    var w = window.open( url, id, features );
 
-    this.other_windows[ id ] = window.open( url, id, features );
-    
-    var self = this;
+    fb_log( "Open window id=%s url=%s", id, url );
+    this.status( 'open' );
+    var win = window;
+    // next little bit lifted from text.xml#text-link
+    if (window instanceof Components.interfaces.nsIDOMChromeWindow) {
+        while (win.opener && !win.opener.closed)
+            win = win.opener;
+    }
 
-    w.addEventListener( 'unload', 
+    var w = win.open( url, id, features );
+
+    if( w ) {    
+        this.other_windows[ id ] = w;
+        var self = this;
+
+        w.addEventListener( 'unload', 
                         function (e) { self.closed( id, e ); return true; }, 
                         false 
                       );
+    }
+    else {
+        alert( "Vous devez permetre des fen\xEAtres 'popup' pour ce site." );
+    }
 }
 
 // ------------------------------------------------------------------
@@ -541,6 +751,10 @@ _.closeWindow = function ( id ) {
         // either window was already closed, or we are the popup
         if( window.name == id ) {
             w = window;
+        }
+        else {
+            fb_log( "Why don't I have window id", id ); 
+            return;
         }
     }
 
@@ -609,7 +823,26 @@ _.for_window = function ( accume ) {
         }
         var cmds = accume[ id ];
         delete accume[ id ];
-        fb_log( "Instructions for |" + name + "| + count=" + cmds.length );
+        fb_log( "Instructions for |" + name + "|, count=" + cmds.length );
         w['$application'].runResponse( cmds );
     }
 }
+
+// ------------------------------------------------------------------
+// Debuging some events
+_.attrModified = function ( e ) {
+    fb_log( e.target.id + "." + e.attrName + "=" + e.newValue );
+}
+
+_.click = function ( e ) {
+    fb_log( e );
+}
+
+_.resize = function ( e ) {
+    fb_log( { type: e.type, 
+              width: e.currentTarget.innerWidth,
+              height: e.currentTarget.innerHeight,
+              target: e.currentTarget
+          } );
+}
+

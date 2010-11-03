@@ -29,7 +29,7 @@ CSS
 $style = POE::XUL::Style->new( $css );
 ok( $style, "Built a style" );
 is( $style->as_string, $css, "Round trip w/ comments OK" );
-is( $style->foo, 'bar', "Found property 'bar'" );
+is( $style->foo, 'bar', "Found property 'foo'" );
 is( $style->border, '1px solid blue', "Found property 'border'" );
 is( $style->marginTop, '5px', "Found property 'margin-top'" );
 is( $style->MozBorderRadius, '5px', "Found property '-moz-border-radius'" );

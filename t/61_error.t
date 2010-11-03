@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 61_error.t 1023 2008-05-24 03:10:20Z fil $
+# $Id: 61_error.t 1566 2010-11-03 03:13:32Z fil $
 
 use strict;
 use warnings;
@@ -34,8 +34,8 @@ END { kill 2, $pid if $pid; }
 unless( $ENV{AUTOMATED_TESTING} ) {
     diag( "" );
     diag( "" );
-    diag( "We are testing several error conditions.  Because of this you are" );
-    diag( "going to see some error messages.  These may be ignored" );
+    diag( "We are testing several error conditions.  Because of this you" );
+    diag( "might see some error messages.  These may be ignored." );
     diag( "" );
 }
 

@@ -8,7 +8,7 @@ use POE::XUL::Node;
 use POE::XUL::ChangeManager;
 use Data::Dumper;
 
-use Test::More ( tests=> 8 );
+use Test::More ( tests=> 9 );
 
 ##############################
 my $CM = POE::XUL::ChangeManager->new();
@@ -27,11 +27,9 @@ my $buffer = $CM->flush;
 
 is_deeply( $buffer, [
                      [ 'for', '' ],
-                     [ 'new', 'PX1', 'window', '' ],
-                     [ 'set', 'PX1', 'id', 'top' ],
-                     [ 'new', 'PX0', 'button', 'top', 0 ],
-                     [ 'set', 'PX0', 'label', 'Button the first' ],
-                     [ 'set', 'PX0', 'id', 'B1' ]
+                     [ 'new', 'top', 'window', '' ],
+                     [ 'new', 'B1', 'button', 'top', 0 ],
+                     [ 'set', 'B1', 'label', 'Button the first' ],
                     ],  "Default label" )
     or die Dumper $buffer;
 
@@ -51,12 +49,12 @@ $W->appendChild( Label( 'bonk' ) );
 $buffer = $CM->flush;
 is_deeply( $buffer, [
                 [ 'for', '' ],
-                [ 'new', 'PX4', 'label', 'top', 2 ],
-                [ 'textnode', 'PX4', 0, 'honk' ],
+                [ 'new', 'PXN1', 'label', 'top', 2 ],
+                [ 'textnode', 'PXN1', 0, 'honk' ],
                 [ 'timeslice' ],
                 [ 'for', '' ],
-                [ 'new', 'PX6', 'label', 'top', 3 ],
-                [ 'textnode', 'PX6', 0, 'bonk' ],
+                [ 'new', 'PXN2', 'label', 'top', 3 ],
+                [ 'textnode', 'PXN2', 0, 'bonk' ],
             ],  "Instructions: flush + timeslice" )
     or die Dumper $buffer;
 
@@ -94,3 +92,36 @@ $buffer = $CM->flush;
 is_deeply( $buffer, [ [ 'timeslice' ] ],  
             "Multiple instructions" )
     or die Dumper $buffer;
+
+#######
+my $ML = MenuList();
+my $PL = MenuPopup( );
+$ML->appendChild( $PL );
+$PL->appendChild( MenuItem( value=>"honk", textNode => "Honking" ) );
+$PL->appendChild( MenuItem( value=>"PTA", textNode => "Harper Value PTA" ) );
+$ML->selectedIndex( 1 );
+$PL->lastChild->selected( 1 );
+$ML->id( 'CWHat' );
+
+
+$W->appendChild( $ML );
+$buffer = $CM->flush;
+$Data::Dumper::Indent = 0;
+$Data::Dumper::Terse = 1;
+$Data::Dumper::Useqq = 1;
+is_deeply( $buffer, [ [ 'for', '' ],
+  [ "new", "PXN3", "menulist", "top", 4 ],
+  ["set","PXN3","id","CWHat"],
+  [ "new", "PXN4", "menupopup", "CWHat", 0 ],
+  [ "new", "PXN5", "menuitem", "PXN4", 0 ],
+  [ "set", "PXN5", "value", "honk" ],
+  [ "textnode", "PXN5", 0, "Honking" ],
+  [ "new", "PXN6", "menuitem", "PXN4", 1 ],
+  [ "set", "PXN6", "value", "PTA" ],
+  [ "set", "PXN6", "selected", "true" ],
+  [ "textnode", "PXN6", 0, "Harper Value PTA" ],
+  [ "set", "CWHat", "selectedIndex", 1 ],
+],  
+            "selectedIndex comes last" )
+    or die Dumper $buffer;
+

@@ -1,6 +1,6 @@
 package POE::XUL::Window;
 # $Id$
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
 use strict;
@@ -15,7 +15,7 @@ use constant DEBUG => 0;
 
 use base qw( POE::XUL::Node );
 
-our $VERSION = '0.01';
+our $VERSION = '0.0600';
 our $CM;
 
 ##############################################################
@@ -40,6 +40,8 @@ sub open
 
     # popup_window will allocate a winID if one doesn't exist already
     $winID = $POE::XUL::Node::CM->popup_window( $winID, $features );
+
+    return unless $INC{'POE/XUL/Application.pm'};
 
     my $server = POE::XUL::Application::server();
     return unless $server;
@@ -161,7 +163,7 @@ Based on work by Ran Eilam.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2010 by Philip Gwyn.  All rights reserved;
 
 Copyright 2003-2004 Ran Eilam. All rights reserved.
 

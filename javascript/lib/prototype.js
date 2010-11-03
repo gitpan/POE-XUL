@@ -913,8 +913,9 @@ Ajax.Request.prototype = Object.extend(new Ajax.Base(), {
       var extras = this.options.requestHeaders;
 
       if (typeof extras.push == 'function')
-        for (var i = 0, length = extras.length; i < length; i += 2)
-          headers[extras[i]] = extras[i+1];
+        for (var i = 0, length = extras.length; i < length; i += 2) {
+            headers[extras[i]] = extras[i+1];
+        }
       else
         $H(extras).each(function(pair) { headers[pair.key] = pair.value });
     }

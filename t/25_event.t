@@ -200,6 +200,12 @@ sub response
     $self->{__respond_with} = $resp;
 }
 
+sub responded
+{
+    my( $self ) = @_;
+    return exists $self->{__respond_with};
+}
+
 sub error_response
 {
     my( $self, $resp, $msg ) = @_;

@@ -1,13 +1,13 @@
 package POE::XUL::TextNode;
-# $Id: TextNode.pm 1023 2008-05-24 03:10:20Z fil $
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# $Id: TextNode.pm 1566 2010-11-03 03:13:32Z fil $
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 
 use strict;
 use warnings;
 use Carp;
 use HTML::Entities qw( encode_entities_numeric );
 
-our $VERSION = '0.01';
+our $VERSION = '0.0600';
 
 
 ################################################################
@@ -78,16 +78,19 @@ POE::XUL::TextNode - XUL TextNode
     use POE::XUL::Node;
     use POE::XUL::TextNode;
 
+    # Explicitly create a TextNode
     my $node = POE::XUL::TextNode->new( "Just some text" );
+    print $node->nodeValue;
 
+    # Implicitly create a TextNode
     my $desc = Description( "This is my description node" );
     print $desc->firstChild->nodeValue;
 
 =head1 DESCRIPTION
 
-POE::XUL::CDATA instances is are objects for holding and manipulating plain
-text.  This permits mixed-mode nodes, that is nodes that contain both text
-and other nodes.
+POE::XUL::TextNode instances is are objects for holding and manipulating
+plain text.  This permits mixed-mode nodes, that is nodes that contain both
+text and other nodes.
 
 =head1 METHODS
 
@@ -98,6 +101,13 @@ and other nodes.
 =head2 nodeValue
 
     my $text = $textnode->nodeValue;
+
+Returns the text of a TextNode.  You may also set the text of the node.
+
+    $textnode->nodeValue( $other_text );
+
+Of course this isn't possible in the browser's DOM; it is simulated by
+replacing the previous node with a new one.
 
 =head2 value
 
@@ -127,7 +137,7 @@ Based on XUL::Node by Ran Eilam.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2010 by Philip Gwyn.  All rights reserved;
 
 Copyright 2003-2004 Ran Eilam. All rights reserved.
 

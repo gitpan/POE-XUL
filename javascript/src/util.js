@@ -235,9 +235,47 @@ function set_window_style() {
 
 // ------------------------------------------------------------------
 // show a message in the firebug console, if it exists
-function fb_log( ) {
+function fb_log () {
     if( window['console'] && window['console']['log'] ) {
         console.log.apply( console, arguments );
+    }
+}
+
+function fb_dir () {
+    if( window['console'] && window['console']['dir'] ) {
+        console.dir.apply( console, arguments );
+    }
+}
+
+function fb_runner ( cmds ) {
+    if( window['console'] && window['console']['group'] ) {
+        console.group( 'Runner cmds=%i', cmds );
+    }
+    if( 0 && window['console'] && window['console']['profile'] ) {
+        console.profile();
+    }
+    fb_time( 'Runner' );
+}
+
+function fb_runnerEnd () {
+    fb_timeEnd( 'Runner' );
+    if( 0 && window['console'] && window['console']['profileEnd'] ) {
+        console.profileEnd();
+    }
+    if( window['console'] && window['console']['groupEnd'] ) {
+        console.groupEnd.apply( console, arguments );
+    }
+}
+
+function fb_time () {
+    if( window['console'] && window['console']['time'] ) {
+        console.time.apply( console, arguments );
+    }
+}
+
+function fb_timeEnd () {
+    if( window['console'] && window['console']['timeEnd'] ) {
+        console.timeEnd.apply( console, arguments );
     }
 }
 
@@ -245,6 +283,14 @@ function fb_log( ) {
 function $debug ( string ) {
     if( window['console'] && window['console']['log'] ) {
         console.log.apply( console, arguments );
+    }
+}
+
+// ------------------------------------------------------------------
+function $message ( string ) {
+    var msg = $( 'USER-Message' );
+    if( msg && msg.addMessage ) {
+        msg.addMessage( string, 1 );
     }
 }
 

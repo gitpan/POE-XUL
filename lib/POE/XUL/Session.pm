@@ -1,13 +1,13 @@
 package                     # Hide from the CPAN indexer
     POE::XUL::Session;
 # $Id$
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 
 use strict;
 use warnings;
 use Carp;
 
-our $VERSION = '0.01';
+our $VERSION = '0.0600';
 
 use POE;
 use base qw(POE::Session);
@@ -139,7 +139,7 @@ sub _invoke_state {
         return $ret[0];
     }
 
-    $self->event_error( $@ );
+    $self->event_error( "PERL ERROR: $@" );
 }
 
 #############################################################################
@@ -229,7 +229,7 @@ sub boot
         POE::XUL::Node::Boot( $self->{name} );
     }
 
-    croak "You must created a Window during $self->{SID}/boot"
+    croak "You must create a Window during $self->{SID}/boot"
             unless $self->{main_window};
     $event->handled;
     return;
@@ -457,7 +457,7 @@ It implements perl-like event invocation.  It makes sure the change manager
 and other bits of global data are always available to event handlers.  It
 deals with most of the house keeping that POE::XUL applications have to do.
 
-Access an application's session is done threw the
+Access an application's session is done through the
 L<POE::XUL::Application/server>.
 
 =head1 METHODS
@@ -483,19 +483,19 @@ C<$_[STATE]> is regular POE code.
 
 =head2 sender_session
 
-Equivalent to C<$_[SENDER]> is regular POE code.
+Equivalent to C<$_[SENDER]> in regular POE code.
 
 =head2 sender_file
 
-Equivalent to C<$_[CALLER_FILE]> is regular POE code.
+Equivalent to C<$_[CALLER_FILE]> in regular POE code.
 
 =head2 sender_line
 
-Equivalent to C<$_[CALLER_LINE]> is regular POE code.
+Equivalent to C<$_[CALLER_LINE]> in regular POE code.
 
 =head2 sender_state
 
-Equivalent to C<$_[CALLER_STATE]> is regular POE code.
+Equivalent to C<$_[CALLER_STATE]> in regular POE code.
 
 
 =head1 AUTHOR
@@ -506,7 +506,7 @@ Philip Gwyn E<lt>gwyn-at-cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2010 by Philip Gwyn.  All rights reserved;
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

@@ -101,8 +101,9 @@ $resp = $UA->get( $URI );
 $data = $browser->decode_resp( $resp, "Click $BU->{id}" );
 is( $data->[0][0], 'ERROR', 'It blew up!' )
         or warn "resp=", Dumper $resp;
-ok( ($data->[0][2] =~ m(^Kabooom! at t/application.pl line \d+.) ), 
-        "An earth shattering kaboom" );
+ok( ($data->[0][2] =~ m(^PERL ERROR: Kabooom! at t/application.pl line \d+.) ), 
+        "An earth shattering kaboom" )
+            or warn $data->[0][2];
 # warn Dumper $data;
 
 ############################################################

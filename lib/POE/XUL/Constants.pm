@@ -1,13 +1,16 @@
 package POE::XUL::Constants;
-# $Id: Constants.pm 1023 2008-05-24 03:10:20Z fil $
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# $Id: Constants.pm 1566 2010-11-03 03:13:32Z fil $
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
 use strict;
 use warnings;
 use Carp;
 
-use base 'Exporter';
+our $VERSION = '0.0600';
+
+require Exporter;
+our @ISA = qw( Exporter );
 
 our @EXPORT = qw(
 	FLEX ALIGN_START ALIGN_CENTER ALIGN_END ALIGN_BASELINE ALIGN_STRETCH
@@ -209,7 +212,7 @@ Based on XUL::Node::Constants by Ran Eilam.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007-2008 Philip Gwyn.  All rights reserved;
+Copyright 2007-2010 Philip Gwyn.  All rights reserved;
 
 Copyright 2003-2004 Ran Eilam. All rights reserved.
 

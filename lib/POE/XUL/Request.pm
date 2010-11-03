@@ -1,6 +1,6 @@
 package POE::XUL::Request;
-# $Id: Request.pm 1023 2008-05-24 03:10:20Z fil $
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# $Id: Request.pm 1566 2010-11-03 03:13:32Z fil $
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 
 use strict;
 use warnings;
@@ -13,6 +13,8 @@ use Unicode::String qw( latin1 utf8 );
 use constant DEBUG => 0;
 
 use base 'POE::Component::Server::HTTP::Request';
+
+our $VERSION = '0.0600';
 
 ##############################################################
 # Rebless an HTTP::Request to us, so we can add the param argument
@@ -33,6 +35,7 @@ sub parse_args
 {
     my( $self ) = @_;
     my $P;
+    return if $self->{P};
 
     local $ENV{QUERY_STRING};
     my $method = $self->method;
@@ -49,10 +52,17 @@ sub parse_args
     else {
         return RC_METHOD_NOT_ALLOWED;
     }
-    xwarn "Request=", join( ' ', map { "$_:@{$P->{$_}}" } sort keys %$P), "\n";
 
     ####
     $self->{P} = $P;
+    return;
+}
+
+sub pre_log
+{
+    my( $self ) = @_;
+    my $P = $self->{P};
+    xwarn "Request=", join( ' ', map { "$_:@{$P->{$_}}" } sort keys %$P), "\n";
     return;
 }
 

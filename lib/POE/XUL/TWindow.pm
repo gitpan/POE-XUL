@@ -1,6 +1,6 @@
 package POE::XUL::TWindow;
 # $Id$
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 
 use strict;
 use warnings;
@@ -11,7 +11,7 @@ use Scalar::Util qw( blessed );
 
 use constant DEBUG => 0;
 
-our $VERSION = '0.01';
+our $VERSION = '0.0600';
 
 ##############################################################
 sub is_window { 1 }

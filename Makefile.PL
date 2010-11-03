@@ -26,6 +26,7 @@ my $BLIB_SERVER_XUL    = "blib/$SERVER_XUL_DIR";
 my $BLIB_SERVER_JS     = "blib/$SERVER_JS_DIR";
 my $BLIB_SERVER_JSLIB  = "blib/$SERVER_JSLIB";
 my $MODULE             = 'lib/POE/XUL.pm';
+my $MODULE_VARS        = 'lib/POE/Component/XUL.pm';
 my $SERVER_SCRIPT      = "bin/$SERVER_SCRIPT_NAME";
 my $JS_BUILD_SCRIPT    = 'bin/js-build';
 my $BLIB_TESTS_XUL     = "$BLIB_SERVER_XUL/tests.xul";
@@ -58,10 +59,10 @@ $PORT ||= 8077;
 $INSTALL_DIR ||= $root;
 
 #############################################################
-print "Fixing $MODULE\n";
+print "Fixing $MODULE_VARS\n";
 {
     local $^I = '.bk';
-    local @ARGV = ( $MODULE );
+    local @ARGV = ( $MODULE_VARS );
     while( <> ) {
         s/(args->{port}.+?)\d+(;\s+# PORT)/$1$PORT$2/;
         s/(args->{root}.+')[^']+(';\s+# ROOT)/$1$INSTALL_DIR\/xul$2/;
@@ -88,12 +89,15 @@ WriteMakefile(
 #        PL_FILES      => {"$SERVER_SCRIPT.PL" => $SERVER_SCRIPT},
 #        EXE_FILES     => [$SERVER_SCRIPT],
         clean         => {FILES => "$SERVER_SCRIPT"},
+        LICENSE       => 'perl',
 
         PREREQ_PM     => {
             'Carp'                              => 0,
             'Digest::MD5'                       => '2.3',
             'HTTP::Date'                        => '1.4',
+            'HTML::Entities'                    => '1.35',
             'HTTP::Status'                      => '1',
+            'I18N::AcceptLanguage'              => '1.04',
             'JSON::XS'                          => '0.8',
             'MIME::Types'                       => '1.13',
             'POE'                               => '0.9500',
@@ -154,6 +158,7 @@ realclean :: js_cleanup
 poexul_to_blib: js_to_poexul Makefile \$(POEXUL)
 	\$(NOECHO) \$(MKPATH) $BLIB_SERVER_XUL/
 	\$(NOECHO) \$(MKPATH) $BLIB_SERVER_XUL/javascript
+	\$(NOECHO) \$(MKPATH) $BLIB_SERVER_XUL/images
 	\$(NOECHO) for file in \$(POEXUL) ; do cp -v \$\$file $BLIB_SERVER_XUL/`echo \$\$file | sed -e 's/\Q$SERVER_JS_DIR\E/javascript/; s/\Q$SERVER_XUL_DIR\E//;'` ; done
 	\$(NOECHO) \$(TOUCH) poexul_to_blib
 

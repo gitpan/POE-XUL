@@ -1,7 +1,7 @@
 package 
     POE::XUL::ChangeManager;
-# $Id: ChangeManager.pm 1023 2008-05-24 03:10:20Z fil $
-# Copyright Philip Gwyn 2007-2008.  All rights reserved.
+# $Id: ChangeManager.pm 1566 2010-11-03 03:13:32Z fil $
+# Copyright Philip Gwyn 2007-2010.  All rights reserved.
 # Based on code Copyright 2003-2004 Ran Eilam. All rights reserved.
 
 #
@@ -17,15 +17,17 @@ package
 use strict;
 use warnings;
 
-use Carp;
+use Carp qw( carp confess croak cluck );
 use HTTP::Status;
 use JSON::XS;
 use POE::XUL::Logging;
 use POE::XUL::State;
+use POE::XUL::Encode;
 use Scalar::Util qw( weaken blessed );
 
 use constant DEBUG => 0;
 
+our $VERSION = '0.0600';
 our $WIN_NAME = 'POEXUL000';
 
 ##############################################################
@@ -64,6 +66,15 @@ sub window
 }
 
 ##############################################################
+sub responded
+{
+    my( $self ) = @_;
+    return $self->{responded};
+}
+
+
+
+##############################################################
 sub build_json
 {
     my( $self ) = @_;
@@ -96,6 +107,13 @@ sub json_encode
 
     # $json =~ s/], /],\n/g;    
     return $json;
+}
+
+sub poexul_encode
+{
+    my( $self, $out ) = @_;
+    DEBUG and xdebug "length=", 0+@$out;
+    return POE::XUL::Encode->encode( $out );
 }
 
 ##############################################################
@@ -151,11 +169,13 @@ sub flush_node
     return unless $node and blessed $node;
     my $state = $self->node_state( $node );
     return unless $state and blessed $state;
-	my @out = ( # "# $node\n", 
-                $state->flush );
+
+    my @defer = $state->as_deferred_command;
+	my @out = $state->flush;
     unless( $state->{is_framify} ) {
         push @out, $self->flush_node( $_ ) foreach $node->children;
     }
+    push @out, @defer;
 	return @out;
 }
 
@@ -173,17 +193,15 @@ sub node_state
             UNIVERSAL::isa($node, 'POE::XUL::Node') or $is_tn;
     }
 
-    my $state = POE::XUL::State->new;
+    my $state = POE::XUL::State->new( $node );
     $self->{states}{ "$node" } = $state;
-    # set the nodes attribute to the ID generated for the state
-    $node->{attributes}{id} ||= $state->id;
 
     DEBUG and 
         xdebug "$self Created state ", $state->id, " for $node\n";
 
     $state->{is_textnode} = !! $is_tn;
 
-    $self->register_node( $state->{id}, $node );
+    $self->register_node( $state->id, $node );
 
     return $state;
 }
@@ -228,11 +246,12 @@ sub register_node
 {
     my( $self, $id, $node ) = @_;
     
+    confess "Why you trying to be funny with me?" unless $id;
     if( $self->{nodes}{$id} and not $self->{nodes}{$id}{disposed} ) {
         confess "I already have a node id=$id";
     }
     confess "Why you trying to be funny with me?" unless $node;
-    # carp "$id is $node";
+    # xwarn "register $id is $node" if $id eq 'LIST_PREQ-PR_LAST_';
     $self->{nodes}{ $id } = $node;
     weaken( $self->{nodes}{ $id } );
     return;
@@ -241,10 +260,19 @@ sub register_node
 ##############################################################
 sub unregister_node
 {
-    my( $self, $id ) = @_;
-    my $node = delete $self->{nodes}{ $id };
+    my( $self, $id, $node ) = @_;
+    # 2009/04 Perl's DESTROY behaviour can be random; if user created
+    # a new node w/ the same ID, we could see the second register before
+    # the DESTROY.  So we make sure we are unregistering the right node.
+    if( ($self->{nodes}{$id}||'') ne $node ) {
+        DEBUG and xwarn "Out of order unregister of $id";
+        return;
+    }
+    delete $self->{nodes}{ $id };
     # 2007/12 do NOT $node->dispose here.  unregister_node is also
     # used by ->after_set_attribute()
+
+    # xwarn "unregister $id is $node" if $id eq 'LIST_PREQ-PR_LAST_';
     return;
 }
 
@@ -254,6 +282,20 @@ sub getElementById
     my( $self, $id ) = @_;
     return $self->{nodes}{ $id };
 }
+
+##############################################################
+# We need for the node to have the same ID as the state
+sub before_creation
+{
+    my( $self, $node ) = @_;
+    my $state = $self->node_state( $node );
+
+    return if $node->getAttribute( 'id' );
+    warn "$node has no ID";
+    $node->setAttribute( id => $state->{id} );
+}
+
+
 
 ##############################################################
 sub after_destroy
@@ -278,6 +320,7 @@ sub after_destroy
 sub after_set_attribute
 {
     my( $self, $node, $key, $value ) = @_;
+    return if $self->{ignorechanges};
 	my $state = $self->node_state($node);
 
 	if ($key eq 'tag') { 
@@ -285,16 +328,11 @@ sub after_set_attribute
         $self->register_window( $node ) if $node->is_window;
     }
 	elsif( $key eq 'id' ) {
-        return if $state->{id} eq $value;
-        DEBUG and 
-            xdebug "node $state->{id} is now $value";
-        my $old_id = $state->{id};
+        $self->_set_id( $node, $key, $value, $state );
 
-        $state->set_attribute($key, $value);
-
-        $self->unregister_node( $state->{id}, $node );
-        $state->{id} = $value;
-        $self->register_node( $state->{id}, $node );
+    }
+    elsif( $key eq 'src' or $key eq 'href' or $key eq 'datasources' ) {
+        $self->_set_uri( $node, $key, $value, $state );
     }
     else {
         $state->set_attribute($key, $value);
@@ -303,10 +341,95 @@ sub after_set_attribute
 
 }
 
+sub _set_id
+{
+    my( $self, $node, $key, $value, $state ) = @_;
+
+    return if $state->{id} eq $value;
+    DEBUG and 
+        xdebug "node $state->{id} is now $value";
+    my $old_id = $state->{id};
+
+    $state->set_attribute($key, $value);
+
+    $self->unregister_node( $state->{id}, $node );
+    $state->{id} = $value;
+    $self->register_node( $state->{id}, $node );
+}
+
+sub _set_uri
+{
+    my( $self, $node, $key, $value, $state ) = @_;
+
+    my $hidden = "hidden-$key";
+    my $cb;
+    if( blessed $value ) {
+        unless( $value->can( 'mime_type' ) and 
+                ( $value->can( 'as_string' ) or $value->can( 'as_xml' ) ) ) {
+            croak "$key object must implement as_string or as_xml, as well as mime_type methods";
+        }
+        DEBUG and xwarn "Callback to object $value";
+        $cb = $hidden;
+    }
+    elsif( ref $value ) {
+        # coderef or array ref for a callback
+        $cb = $hidden;
+        if( 'ARRAY' eq ref $value ) {
+            if( 2 == @$value and 'HASH' eq ref $value->[-1] ) {
+                $cb = { attribute => $cb, 
+                        extra => pop @$value
+                      };
+            }
+            if( 1 == @$value ) {
+                unshift @$value, 
+                    $POE::Kernel::poe_kernel->get_active_session->ID;
+            }
+        }
+    }
+    # binary data
+    elsif( $value !~ m,^(((ftp|file|data|https?):)|/), ) { # not a URI
+        if( 30_000 < length $value or not $node->getAttribute( 'content-type' )) {    
+            # Don't use a data: url if 
+            # - the data is too long
+            # - we don't have a content-type attribute
+            # In the latter case, we hope we'll have one, once we get to the
+            # callback
+            $cb = $hidden;
+        }
+        else {
+            my $ct = $node->getAttribute( 'content-type' );
+            my $uri = URI->new( "data:" );
+            $uri->media_type( $ct );
+            $uri->data( $value );
+            $state->set_attribute( $key, $uri->as_string );
+            return;
+        }
+    }
+    else {
+        $state->set_attribute($key, $value);
+        return;
+    }
+
+
+    # Setting a callback attribute cases Runner to set the value of 
+    # the attribute to an URL that does a Callback event 
+    # (see commandCallback).
+    # This then calls handle_Callback (see below) or the coderef/event
+    # defined in $value
+    # $cb must be either a value (which gets in attribute when it comes back)
+    # or a hashref { extra=>{}, attribute=>'' }
+    $state->set_attribute( callback => $cb );
+    local $self->{ignorechanges} = 1;   # don't send to browser
+    $node->setAttribute( $hidden, $value );
+
+}
+
+
 ##############################################################
 sub after_remove_attribute
 {
     my( $self, $node, $key ) = @_;
+    return if $self->{ignorechanges};
     my $state = $self->node_state( $node );
 
     delete $self->{states}{ $state->{style} } if $key eq 'style' and
@@ -315,10 +438,22 @@ sub after_remove_attribute
 }
 
 ##############################################################
+sub after_method_call
+{
+    my( $self, $node, $key, $args ) = @_;
+    return if $self->{ignorechanges};
+	my $state = $self->node_state($node);
+
+    $state->method_call($key, $args);
+}
+
+
+
+##############################################################
 sub after_new_style
 {
     my( $self, $node ) = @_;
-	my $state = $self->node_state($node);
+    my $state = $self->node_state($node);
     delete $self->{states}{ $state->{style} }
                 if $state->{style};
     my $style = $node->get_style;
@@ -338,21 +473,35 @@ sub after_style_change
 
 ##############################################################
 # when node added, set parent node state id on child node state
-sub before__add_child_at_index
+sub after__add_child_at_index
 {
     my( $self, $parent, $child, $index ) = @_;
-	my $child_state = $self->node_state( $child );
-	$child_state->{parent} = $self->node_state( $parent );
+
+    my $child_state = $self->node_state( $child );
+    $child_state->{parent} = $self->node_state( $parent );
     weaken $child_state->{parent};
-	$child_state->{index} = $index;
+    if( defined $child_state->{trueindex} ) {
+        $child_state->{trueindex} = $index;
+    }
+    else {
+        $child_state->{index} = $index;
+    }
 
     return unless @{$child->{children} || []};
 
     my $n = 0;
     foreach my $subchild ( @{ $child->{children} } ) {
-        $self->before__add_child_at_index( $child, $subchild, $n );
+        $self->after__add_child_at_index( $child, $subchild, $n );
         $n++;
     }
+}
+
+sub set_trueindex
+{
+    my( $self, $parent, $child, $trueindex ) = @_;
+    my $child_state = $self->node_state( $child );
+    # Ignore trueindex for now...  It breaks to many things
+    $child_state->{index} = $trueindex;
 }
 
 ##############################################################
@@ -363,27 +512,15 @@ sub before_remove_child
 #	my $child       = $parent->_compute_child_and_index($context->params->[1]);
     # return unless $child;
     Carp::croak "Why no index" unless defined $index;
-	my $child_state = $self->node_state($child);
-	$child_state->is_destroyed( $parent, $index );
-	push @{$self->{destroyed}}, $child_state;
+    my $child_state = $self->node_state($child);
+    $child_state->is_destroyed( $parent, $index );
+    push @{$self->{destroyed}}, $child_state;
 
     delete $self->{states}{ "$child" };
     delete $self->{states}{ $child_state->{style} }
                             if $child_state->{style};
     $self->unregister_node( $child_state->{id}, $child );
 }
-
-##############################################################
-# We need for the node to have the same ID as the state
-sub after_creation
-{
-    my( $self, $node ) = @_;
-    my $state = $self->node_state( $node );
-
-    return if $node->getAttribute( 'id' );
-    $node->setAttribute( id => $state->{id} );
-}
-
 
 ##############################################################
 sub after_cdata_change
@@ -393,15 +530,6 @@ sub after_cdata_change
     $state->{cdata} = $node->{data};
     $state->{is_new} = 1;
 }
-
-##############################################################
-sub after_framify
-{
-    my( $self, $node ) = @_;
-    my $state = $self->node_state( $node );
-    $state->{is_framify} = 1
-}
-
 
 
 
@@ -432,7 +560,7 @@ sub wrapped_error
     my( $self, $string ) = @_;
     if( $self->{current_event} ) {
         # xwarn "wrapped with $self->{current_event}";
-        $self->error_response( $self->{current_event}->{resp}, $string );
+        $self->error_response( $self->{current_event}->response, $string );
     }
     else {
         # TODO: what to do with errors that happen between events?
@@ -445,8 +573,8 @@ sub error_response
 {
     my( $self, $resp, $string ) = @_;
     xlog "error_response $string";
-
-    return $self->json_response( $resp, [[ 'ERROR', '', $string]] );
+    # confess "ERROR $string";
+    return $self->cooked_response( $resp, [[ 'ERROR', '', $string]] );
 }
 
 ##############################################################
@@ -455,11 +583,11 @@ sub response
     my( $self, $resp ) = @_;
     my $out = $self->flush;
     # xwarn "response = ", 0+@$out;
-    $self->json_response( $resp, $out );
+    $self->cooked_response( $resp, $out );
 }
 
 ##############################################################
-sub json_response
+sub cooked_response
 {
     my( $self, $resp, $out ) = @_;
 
@@ -468,21 +596,25 @@ sub json_response
         xcarp "Already responded";
         return;
     }
+    confess "I need a response" unless $resp;
 
-    my $json;
-    if( ref $out ) {
-        $json = $self->json_encode( $out );
+    my $data;
+    unless( ref $out ) {
+        $data = $out;
+    }
+    elsif( 0 ) {	# XXX config
+        $resp->content_type( POE::XUL::Encode->content_type ); 
+        $data = $self->poexul_encode( $out );
     }
     else {
-        $json = $out;
+        $resp->content_type( 'application/json' ); #; charset=UTF-8' );
+        $data = $self->json_encode( $out );
     }
-
     DEBUG and 
-        xdebug "Response=$json";
-
-    $resp->content_type( 'application/json' ); #; charset=UTF-8' );
-    $self->__response( $resp, $json );
+        xdebug "Response=$data";
+    $self->__response( $resp, $data );
 }
+
 
 ##############################################################
 sub xul_response
@@ -494,16 +626,26 @@ sub xul_response
 }
 
 ##############################################################
+sub data_response
+{
+    my( $self, $resp, $data ) = @_;
+    # TODO: should we check if there is anything to be flushed?
+    # Idealy, we'd do it non-destructively, so that we could warn but
+    # the changes would wait for next request
+    $self->__response( $resp, $data );
+}
+
+##############################################################
+## This should be moved to Controler
 sub __response
 {
     my( $self, $resp, $content ) = @_;
 
+    
     do {
         # HTTP exptects content-length to be number of octets, not chars
         # The UTF-8 that JSON::XS is producing was screwing up length()
-        # xwarn "chars=", length $content;
         use bytes;
-        # xwarn "bytes=", length $content;
         $resp->content_length( length $content );
     };
     $resp->content( $content );
@@ -539,6 +681,12 @@ sub Boot
 }
 
 
+
+
+
+
+
+
 ##############################################################
 # Side-effects for a given event
 ##############################################################
@@ -554,6 +702,7 @@ sub handle_Click
 sub handle_Change 
 {
 	my( $self, $event ) = @_;
+    local $self->{ignorechanges} = 1;
     DEBUG and 
         xdebug "Change value=", $event->value, " source=", $event->source;
 	$event->source->setAttribute( value=> $event->value );
@@ -563,6 +712,7 @@ sub handle_Change
 sub handle_BoxClick 
 {
 	my( $self, $event ) = @_;
+    local $self->{ignorechanges} = 1;
 	my $checked = $event->checked;
 
     DEBUG and xdebug "Click event=$event source=", $event->source->id;
@@ -577,6 +727,7 @@ sub handle_BoxClick
 sub handle_RadioClick 
 {
 	my( $self, $event ) = @_;
+    local $self->{ignorechanges} = 1;
 	my $selectedId = $event->selectedId;
 
     DEBUG and 
@@ -608,11 +759,18 @@ sub handle_RadioClick
 
 ##############################################################
 # A list item was selected
-# Uses: source, selectedIndex
+# Uses: source, selectedIndex, value
 sub handle_Select 
 {
 	my( $self, $event ) = @_;
+    local $self->{ignorechanges} = 1;
+
     my $menulist = $event->source;
+
+    if( $menulist->tagName eq 'tree' ) {
+        return $self->handle_TreeSelect( $event );
+    }
+
     my $I = $event->selectedIndex;
                               # selecting text in a textbox!
     return unless defined $I and $I ne 'undefined'; 
@@ -620,6 +778,17 @@ sub handle_Select
 
     DEBUG and 
         xdebug "Select was=$oI, now=$I";
+
+    if( defined $I and $I == -1 ) {
+        xdebug "Change Combo I=$I value=", $event->value;
+        $menulist->selectedIndex( $I );
+        $menulist->value( $event->value );
+        return;
+    }
+    elsif( $menulist->editable and $oI and $oI == -1 ) {
+        xdebug "Change Combo remove 'value'";
+        $menulist->removeAttribute( 'value' );
+    }
 
     $self->Select_choose( $event, $oI, 'selected', 0 );
     $menulist->selectedIndex( $I );
@@ -630,8 +799,10 @@ sub handle_Select
         # The event should go to the item first, then the "parent"
         $event->bubble_to( $event->source );
         $event->__source_id( $item->id );
+        # $menulist->value( $item->value );
     }
 }
+
 
 ##############################################################
 # Turn one menuitem on/off
@@ -646,6 +817,7 @@ sub Select_choose
     my $item = $list->getItemAtIndex( $I );
     return unless $item;
 
+    local $self->{ignorechanges} = 0;
     if( $value ) {
         $item->setAttribute( $att, $value );
     }
@@ -660,8 +832,132 @@ sub Select_choose
 sub handle_Pick 
 {
 	my( $self, $event ) = @_;
+    local $self->{ignorechanges} = 1;
 	$event->source->color($self->color);
 }
+
+##############################################################
+# Image src="" callbackup
+sub handle_Callback
+{
+	my( $self, $event ) = @_;
+    my $node = $event->source;
+    my $key = $event->attribute;
+    # xdebug( "Callback $key" );
+    my $cb = $node->getAttribute( $key );
+    if( blessed $cb ) {
+        DEBUG and xwarn "Callback with $cb";
+        $event->response->content_type( 
+                                $cb->mime_type
+                            );
+        if( $cb->can( 'as_xml' ) ) {
+            $event->data_response( $cb->as_xml );
+        }
+        else {
+            $event->data_response( $cb->as_string );
+        }
+    }
+    elsif( ref $cb ) {
+        if( 'CODE' eq ref $cb ) {
+            $cb->( $node, $event );
+        }
+        else {
+            # xdebug( join '/', @$cb );
+            $POE::Kernel::poe_kernel->call( @$cb, $node, $event );
+        }
+    }
+    else {
+        $event->response->content_type( 
+                                $node->getAttribute( 'content-type' ) 
+                            );
+        $event->data_response( $cb );
+    }
+}
+
+##############################################################
+# A row of a tree was selected
+# Uses: source, selectedIndex, value
+sub handle_TreeSelect
+{
+	my( $self, $event ) = @_;
+
+    local $self->{ignorechanges} = 1;
+
+    my $tree = $event->source;
+    my $rowN = $event->selectedIndex;
+
+    # Handle user sorting of RDF trees
+    if( $event->primary_col ) {
+        xdebug "primary_col=", $event->primary_col;
+        xdebug "primary_text=", $event->primary_text;
+        my $rdf = $tree->getAttribute( 'hidden-datasources' );
+        xdebug "rdf: $rdf";
+        if( blessed( $rdf ) and $rdf->can( 'index_of' ) ) {
+            $rowN = $rdf->index_of( $event->primary_col, $event->primary_text );
+            xdebug "true index is $rowN";
+            $tree->selectedIndex( $rowN );
+            $event->selectedIndex( $rowN );
+            return;
+        }
+    }
+
+    $tree->selectedIndex( $rowN );
+
+    # Find the xul:treechildren node
+    my $treechildren;
+    foreach my $node ( $tree->children ) {
+        next unless $node->tagName eq 'treechildren';
+        $treechildren = $node;
+        last;
+    }
+
+    unless( $treechildren ) {
+        # This happens when a tree has a datasource, like RDF
+        DEBUG and xdebug "Select on a tree w/o treechildren";
+        return;
+    }
+
+    DEBUG and
+        xdebug "treechildren=$treechildren";
+    
+    # Find the row nodes.  This could be xul:treeitem or xul::treerow
+    my @rows;
+    foreach my $treeitem ( $treechildren->children ) {
+        my $first = $treeitem->first_child;
+        if( $first and $first->tagName eq 'treerow' ) {
+            push @rows, $first;
+        }
+        else {
+            push @rows, $treeitem;
+        }
+    }
+    DEBUG and
+        xdebug "Found ", 0+@rows, " rows";
+
+    for( my $r = 0 ; $r<=$#rows ; $r++ ) {
+        my $prop = $rows[$r]->properties;
+        if( $r == $rowN ) {
+            $prop =~ s/\s*selected\s*//g;
+            if( $prop ) { $prop .= ' selected' }
+            else        { $prop = 'seelected' }
+            DEBUG and xdebug "Row $r properties=$prop";
+            $rows[$r]->properties( $prop );
+            $event->bubble_to( $tree );
+            $event->__source_id( $rows[$r]->id );
+        }
+        elsif( $prop =~ s/\s*selected\s*//g ) {
+            DEBUG and xdebug "Row $r properties=$prop";
+            $rows[$r]->properties( $prop||'' );
+        }
+    }
+
+    return;
+}
+
+
+
+
+
 
 ##############################################################
 sub Prepend
@@ -755,8 +1051,8 @@ Not used directly.  See L<POE::XUL> and L<POE::XUL::Event>.
 =head1 DESCRIPTION
 
 The ChangeManager is responsible for tracking and sending all changes to a
-L<POE::XUL::Node> to the DOM element.  It also handles any side-effects
-of a DOM event that was sent from the browser.
+L<POE::XUL::Node> to its corresponding DOM element.  It also handles any
+side-effects of a DOM event that was sent from the browser.
 
 There is only one ChangeManager per application.  The application never
 accesses the ChangeManager directly, but rather by manipulating
@@ -812,6 +1108,8 @@ To be very useful, you should preceed this with a L</flush>.
 
     pxInstruction( [ popup_window => $id, $features ] );
 
+PLEASE USE L<POE::XUL::Window/open> INSTEAD.
+
 Tell the client library to create a new window.  The new window's name will
 be C<$id>.  The new window will be created with the features defined in
 C<$features>: 
@@ -833,9 +1131,13 @@ C<$APP> is the current application and C<$SID> is the session ID of the
 current application instance).  C<popup.xul> will then send a C<connect>
 event.  See L<POE::XUL/connect>.
 
+
+
 =item close_window
 
     pxInstruction( [ close_window => $id ] );
+
+PLEASE USE L<POE::XUL::Window/close> INSTEAD.
 
 Closes the window C<$id>.  This will provoke a C<disconnect> event.
 See L<POE::XUL/disconnect>.
@@ -854,7 +1156,7 @@ Based on XUL::Node by Ran Eilam.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007-2008 by Philip Gwyn.  All rights reserved;
+Copyright 2007-2010 by Philip Gwyn.  All rights reserved;
 
 Copyright 2003-2004 Ran Eilam. All rights reserved.
 

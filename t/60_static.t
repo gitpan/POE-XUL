@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# $Id: 60_static.t 1023 2008-05-24 03:10:20Z fil $
+# $Id: 60_static.t 1566 2010-11-03 03:13:32Z fil $
 
 use strict;
 use warnings;
@@ -18,7 +18,8 @@ t::PreReq::load( 19, qw( HTTP::Request LWP::UserAgent ) );
 use t::Client;
 use t::Server;
 
-
+BEGIN { unlink "poe-xul/xul/something.js.cache" }
+END   { unlink "poe-xul/xul/something.js.cache" }
 
 ################################################################
 my $Q = 5;

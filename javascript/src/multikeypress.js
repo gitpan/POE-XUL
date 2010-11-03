@@ -55,7 +55,7 @@ _.keypress_menulist = function ( event ) {
 _.keypress_textbox = function (event) {
     
     if( event.keyCode == 9 ) {   // tab
-        fb_log( "tab" );
+        fb_log( "Multikeypress tab" );
         // we want to prevent the focus from going to the menulist
         // going forwards => one extra advanceFocus()
         if( !event.shiftKey )
@@ -117,14 +117,22 @@ _.keypress = function (event) {
     event.stopPropagation();
 
     // Create a new timeout
-    var self = this;
+    this.create_timeout();
+    return false;
+}
+
+// ------------------------------------------------------------------
+_.create_timeout = function ( now ) {
     var multi = 1000;
     if( this.changed ) {
         multi = 500;
         if( this.textbox.value.length == 2 || this.changed > 2 ) {
-            this.changed = 3;   // get the change to the server right now
-            multi = 100;
+            now = 1;
         }
+    }
+    if( now ) {
+        this.changed = 3;   // get the change to the server right now
+        multi = 100;
     }
     this.start_timeout( multi );
     return false;
@@ -133,6 +141,9 @@ _.keypress = function (event) {
 // ------------------------------------------------------------------
 // 
 _.start_timeout = function ( multi ) {
+    fb_log( "suppressonselect=%s",
+            this.menulist.getAttribute( 'suppressonselect' )
+          );
     fb_log( "timeout multiplier=" + multi );
     var self = this;
     this.tID = window.setTimeout( function () { self.timedout() }, 
@@ -238,8 +249,11 @@ _.submit = function () {
     this.changed = 0;
     if( $application ) {
         fb_log( "submit #" + this.menulist.selectedIndex );
-        var e = { target: this.menulist };
-        $application.fireEvent_Select( e );
+        
+        var pop = this.menulist.childNodes[0];
+        var target = pop.childNodes[ this.menulist.selectedIndex ];
+        var e = { target: target };
+        $application.fireEvent_Command( e );
     }
 }
 
@@ -277,7 +291,7 @@ _.command_menulist = function (event) {
     this.textbox.value = event.target.value;
     return;
 
-	var source = event.target;
+    var source = event.target;
     var text = source.label;
     fb_log( "select=" + text );
     this.textbox.value = source.substr( 0, this.width );
